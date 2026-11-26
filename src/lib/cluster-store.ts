@@ -430,7 +430,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
       // Re-seeding per tick makes crash injection reproducible for the same tick.
       const tickRng = createSeededRng(0x5eed1234 ^ t)
       const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
-      // ---- persistent engine owns scheduling and kubelet/container lifecycle ----
+      // ---- persistent engine owns scheduling, kubelet lifecycle and workload controllers ----
       const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng, {
         daemonSets: s.daemonSets,
         statefulSets: s.statefulSets,
