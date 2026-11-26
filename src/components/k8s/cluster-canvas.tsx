@@ -38,11 +38,12 @@ export function ClusterCanvas() {
   const moveNode = useCluster((s) => s.moveNode)
   const createResource = useCluster((s) => s.createResource)
   const wrapper = useRef<HTMLDivElement>(null)
+  const engineInitialized = useRef(false)
   const { screenToFlowPosition } = useReactFlow()
 
-  const engineNodeSignature = nodes.map(n => n.id + ":" + n.name + ":" + n.cpuCapacity + ":" + n.memCapacity + ":" + n.role).join("|")
-
   useEffect(() => {
+    if (engineInitialized.current) return
+    engineInitialized.current = true
     const engineNodes: NodeResource[] = nodes.map(n => ({
       apiVersion: "v1", kind: "Node",
       metadata: { name: n.name, uid: n.id, resourceVersion: 1, generation: 1, labels: { "kubernetes.io/hostname": n.name }, annotations: {}, creationTimestamp: 0 },
@@ -50,8 +51,9 @@ export function ClusterCanvas() {
       status: { conditions: [{ type: "Ready", status: true }], lastHeartbeatTick: 0, heartbeatEnabled: true },
     }))
     engineStore.reset(engineNodes)
+  // Seed once: editing canvas infrastructure must not erase engine API objects.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineNodeSignature])
+  }, [])
 
   // simulation heartbeat
   useEffect(() => {

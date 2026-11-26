@@ -89,7 +89,7 @@ export function applyManifests(state:EngineState,source:string):{state:EngineSta
 }
 export interface KubectlResult{state:EngineState;output:string;error?:boolean}
 function kindName(input:string):any{const map:Record<string,string>={pods:"Pod",pod:"Pod",nodes:"Node",node:"Node",deployments:"Deployment",deployment:"Deployment",replicasets:"ReplicaSet",replicaset:"ReplicaSet",daemonsets:"DaemonSet",daemonset:"DaemonSet",statefulsets:"StatefulSet",statefulset:"StatefulSet",services:"Service",service:"Service",jobs:"Job",job:"Job",cronjobs:"CronJob",cronjob:"CronJob",pvcs:"PersistentVolumeClaim",pvc:"PersistentVolumeClaim",persistentvolumeclaims:"PersistentVolumeClaim"};return map[input.toLowerCase()]}
-export function runKubectl(state:EngineState,command:string):KubectlResult{
+export function runKubectl(state:EngineState,command:string,stdin?:string):KubectlResult{
  const args=command.trim().split(/\s+/);if(!args[0])return{state,output:""};if(args[0]!=="kubectl")return{state,output:"command not found: use kubectl",error:true};
  const verb=args[1],ns=args.includes("-n")?args[args.indexOf("-n")+1]:"default";
  if(state.controlPlane?.apiServerAvailable===false)return{state,output:"The Kubernetes API server is unavailable",error:true};
@@ -102,6 +102,6 @@ export function runKubectl(state:EngineState,command:string):KubectlResult{
   if(verb==="delete"){const x=deleteResource(state,kind,name,ns);return x.ok&&x.state?{state:x.state,output:"deleted "+kind.toLowerCase()+"/"+name}:{state,output:x.error??"delete failed",error:true}}
   if(verb==="scale"){const replicas=Number(args.find(x=>x.startsWith("--replicas="))?.split("=")[1]);if(!Number.isFinite(replicas))return{state,output:"missing --replicas=N",error:true};if(!["Deployment","ReplicaSet","StatefulSet"].includes(kind))return{state,output:"scale supports Deployment, ReplicaSet and StatefulSet",error:true};const x=scaleResource(state,kind,name,replicas,ns);return x.ok&&x.state?{state:x.state,output:"scaled "+kind.toLowerCase()+"/"+name+" to "+replicas}:{state,output:x.error??"scale failed",error:true}
  }
- if(verb==="apply"){return{state,output:"Use the YAML tab's Apply button to submit manifest contents (kubectl apply -f - is not an interactive shell).",error:true}}
+ if(verb==="apply"){const fileIndex=args.indexOf("-f");if(fileIndex<0)return{state,output:"usage: kubectl apply -f -",error:true};if(args[fileIndex+1]!=="-"||!stdin)return{state,output:"provide manifest content through stdin (the YAML editor)",error:true};try{const applied=applyManifests(state,stdin);return{state:applied.state,output:applied.messages.join("\n")}}catch(error){return{state,output:error instanceof Error?error.message:String(error),error:true}}}
  return{state,output:"unsupported command: "+command,error:true};
 }
