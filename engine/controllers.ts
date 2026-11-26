@@ -64,7 +64,7 @@ export function reconcileStatefulSets(state: EngineState): void {
       let volumeClaimName: string | undefined;
       const claimTemplate = statefulSet.spec.volumeClaimTemplate;
       if (claimTemplate && claimTemplate.storageGi > 0) {
-        volumeClaimName = `${claimTemplate.storageClassName}-${name}`;
+        volumeClaimName = `data-${name}`;
         const claimKey = `PersistentVolumeClaim:${statefulSet.metadata.namespace ?? "default"}/${volumeClaimName}`;
         let claim = state.resources[claimKey] as PersistentVolumeClaimResource | undefined;
         if (!claim) {
