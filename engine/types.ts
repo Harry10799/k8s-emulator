@@ -16,6 +16,12 @@ export interface ObjectMetadata {
   creationTimestamp: number;
 }
 
+export interface OwnerReference {
+  uid: string;
+  kind: string;
+  name: string;
+}
+
 export interface ResourceRequirements {
   requests: { cpuMilli: number; memoryMi: number };
   limits?: { cpuMilli?: number; memoryMi?: number };
@@ -55,7 +61,7 @@ export interface PodResource {
     conditions: Array<{ type: "Ready" | "PodScheduled"; status: boolean; reason?: string; message?: string }>;
     containerStatuses: Array<{ name: string; ready: boolean; restartCount: number; state: "Waiting" | "Running" | "Terminated" }>;
   };
-  ownerReferences?: Array<{ uid: string; kind: string; name: string }>;
+  ownerReferences?: OwnerReference[];
 }
 
 export interface NodeResource {
@@ -69,6 +75,24 @@ export interface NodeResource {
     taints?: Array<{ key: string; value?: string; effect: "NoSchedule" | "PreferNoSchedule" | "NoExecute" }>;
   };
   status: { conditions: Array<{ type: "Ready"; status: boolean; reason?: string }> };
+}
+
+export interface ReplicaSetResource {
+  apiVersion: "apps/v1";
+  kind: "ReplicaSet";
+  metadata: ObjectMetadata;
+  spec: {
+    replicas: number;
+    selector: { matchLabels: Labels };
+    template: { metadata: { labels: Labels }; spec: PodSpec };
+  };
+  status: {
+    observedGeneration: number;
+    replicas: number;
+    readyReplicas: number;
+    availableReplicas: number;
+  };
+  ownerReferences?: OwnerReference[];
 }
 
 export interface DeploymentResource {
@@ -91,7 +115,7 @@ export interface DeploymentResource {
   };
 }
 
-export type KubernetesResource = PodResource | NodeResource | DeploymentResource;
+export type KubernetesResource = PodResource | NodeResource | ReplicaSetResource | DeploymentResource;
 
 export interface EngineEvent {
   id: string;

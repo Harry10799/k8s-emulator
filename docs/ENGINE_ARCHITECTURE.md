@@ -11,19 +11,22 @@ step(state, rng) -> nextState
 - `step` never mutates its input. Retaining the previous state provides the foundation for pause/step/rewind and undo/redo.
 - Randomness is injected through `RandomSource`; `createSeededRng(seed)` makes a run reproducible.
 - Resources use Kubernetes-inspired `apiVersion`, `kind`, `metadata`, `spec`, and `status` shapes.
-- Controllers reconcile desired state before scheduling. The first controller models Deployment replica reconciliation.
+- Controllers run in control-plane order: Deployment creates/manages a ReplicaSet; ReplicaSet creates/deletes Pods; the scheduler binds eligible Pending Pods; the kubelet simulation starts containers and updates readiness.
+- Deployment status is aggregated from its owned ReplicaSet, and ReplicaSet status is aggregated from its owned Pods.
 - The scheduler filters nodes by readiness, cordon state, node selectors, taints/tolerations, and requested CPU/memory, then scores feasible nodes by remaining capacity.
 
 ## Current simulation boundary
 
-This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The first engine slice models Nodes, Pods, and Deployments. The existing canvas and Zustand simulation remain in place while the engine is introduced and tested independently; UI integration is a follow-up migration, not silently mixed into this foundation commit.
+This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The engine currently models Nodes, Pods, ReplicaSets, and Deployments. The controller model supports one active ReplicaSet per Deployment; rollout history, multiple revisions and rolling update surge/unavailable behavior are intentionally deferred to the rollout milestone.
+
+The existing canvas and Zustand simulation remain in place while the engine is introduced and tested independently. UI integration is a follow-up migration, not silently mixed into this engine milestone.
 
 ## Directory map
 
 - `engine/types.ts`: resource and state contracts.
 - `engine/rng.ts`: seeded deterministic random source.
 - `engine/scheduler.ts`: scheduling filters and scoring.
-- `engine/reconcile.ts`: desired-state reconciliation.
+- `engine/reconcile.ts`: Deployment and ReplicaSet desired-state controllers plus status aggregation.
 - `engine/engine.ts`: pure simulation step and resource insertion.
 - `tests/engine.test.ts`: deterministic engine behavior tests.
 

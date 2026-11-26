@@ -9,7 +9,7 @@ An interactive, educational Kubernetes cluster simulator. Build a cluster visual
 - Visual cluster canvas with nodes, workloads and Kubernetes resource inspectors.
 - Simulated Pods, Deployments, ReplicaSets, DaemonSets, StatefulSets, Services, ConfigMaps, Secrets, Jobs, CronJobs, PVCs and Ingress.
 - Tick-based workload lifecycle, scheduling, events and failure injection.
-- A new isolated TypeScript simulation engine foundation with immutable state transitions, seeded randomness, Deployment reconciliation and scheduler filtering/scoring.
+- An isolated TypeScript simulation engine with immutable state transitions, seeded randomness, scheduler filtering/scoring, and a realistic Deployment → ReplicaSet → Pod controller chain.
 
 ## Getting started
 
@@ -35,7 +35,7 @@ bun run build
 
 ## Architecture
 
-The existing Next.js/React Flow interface is under `src/`. The new pure TypeScript simulation foundation is under `engine/`; it deliberately has no React, Zustand, browser, or network dependencies.
+The existing Next.js/React Flow interface is under `src/`. The pure TypeScript simulation foundation is under `engine/`; it deliberately has no React, Zustand, browser, or network dependencies.
 
 See [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md) for the engine contract, current boundaries and migration milestones.
 

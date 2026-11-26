@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createInitialState, createSeededRng, step, type DeploymentResource, type NodeResource } from "../engine";
+import { createInitialState, createSeededRng, step, type DeploymentResource, type NodeResource, type PodResource, type ReplicaSetResource } from "../engine";
 
 function node(name: string): NodeResource {
   return {
@@ -31,41 +31,55 @@ function deployment(replicas: number): DeploymentResource {
   };
 }
 
+function resourcesOfKind<T extends { kind: string }>(state: ReturnType<typeof createInitialState>, kind: string): T[] {
+  return Object.values(state.resources).filter((resource) => resource.kind === kind) as T[];
+}
+
 describe("simulation engine", () => {
-  it("creates and schedules the desired number of deployment pods", () => {
+  it("creates the Deployment -> ReplicaSet -> Pod ownership chain", () => {
     const initial = createInitialState([node("worker-a"), deployment(2)]);
     const result = step(initial, createSeededRng(42));
-    const pods = Object.values(result.resources).filter((resource) => resource.kind === "Pod");
+    const replicaSets = resourcesOfKind<ReplicaSetResource>(result, "ReplicaSet");
+    const pods = resourcesOfKind<PodResource>(result, "Pod");
+
+    expect(replicaSets).toHaveLength(1);
     expect(pods).toHaveLength(2);
-    expect(pods.every((pod) => pod.kind === "Pod" && pod.spec.nodeName === "worker-a")).toBe(true);
-    expect(pods.every((pod) => pod.kind === "Pod" && pod.status.phase === "Running")).toBe(true);
+    expect(replicaSets[0].ownerReferences?.[0]).toMatchObject({ uid: "deployment-web", kind: "Deployment" });
+    expect(pods.every((pod) => pod.ownerReferences?.[0]?.uid === replicaSets[0].metadata.uid)).toBe(true);
+    expect(pods.every((pod) => pod.spec.nodeName === "worker-a" && pod.status.phase === "Running")).toBe(true);
     expect(initial.tick).toBe(0);
     expect(result.tick).toBe(1);
   });
 
   it("is deterministic for the same initial state and seed", () => {
     const initial = createInitialState([node("worker-a"), deployment(1)]);
-    const first = step(initial, createSeededRng(7));
-    const second = step(initial, createSeededRng(7));
-    expect(first).toEqual(second);
+    expect(step(initial, createSeededRng(7))).toEqual(step(initial, createSeededRng(7)));
   });
 
   it("leaves pods Pending when there are no schedulable nodes", () => {
     const unavailable = node("worker-a");
     unavailable.spec.unschedulable = true;
     const result = step(createInitialState([unavailable, deployment(1)]), createSeededRng(1));
-    const pod = Object.values(result.resources).find((resource) => resource.kind === "Pod");
-    expect(pod?.kind).toBe("Pod");
-    if (pod?.kind === "Pod") expect(pod.status.phase).toBe("Pending");
+    const pod = resourcesOfKind<PodResource>(result, "Pod")[0];
+    expect(pod.status.phase).toBe("Pending");
+    expect(pod.spec.nodeName).toBeUndefined();
   });
 
-  it("reconciles scale changes on the next tick", () => {
-    const initial = createInitialState([node("worker-a"), deployment(3)]);
-    const first = step(initial, createSeededRng(2));
-    const dep = Object.values(first.resources).find((resource) => resource.kind === "Deployment");
-    expect(dep?.kind).toBe("Deployment");
-    if (dep?.kind === "Deployment") dep.spec.replicas = 1;
+  it("reconciles scale changes through the ReplicaSet on the next tick", () => {
+    const first = step(createInitialState([node("worker-a"), deployment(3)]), createSeededRng(2));
+    const dep = resourcesOfKind<DeploymentResource>(first, "Deployment")[0];
+    dep.spec.replicas = 1;
+    dep.metadata.generation += 1;
     const second = step(first, createSeededRng(2));
-    expect(Object.values(second.resources).filter((resource) => resource.kind === "Pod")).toHaveLength(1);
+    expect(resourcesOfKind<ReplicaSetResource>(second, "ReplicaSet")).toHaveLength(1);
+    expect(resourcesOfKind<PodResource>(second, "Pod")).toHaveLength(1);
+    expect(resourcesOfKind<DeploymentResource>(second, "Deployment")[0].status.readyReplicas).toBe(1);
+  });
+
+  it("does not mutate the previous state snapshot", () => {
+    const initial = createInitialState([node("worker-a"), deployment(1)]);
+    const snapshot = structuredClone(initial);
+    step(initial, createSeededRng(5));
+    expect(initial).toEqual(snapshot);
   });
 });

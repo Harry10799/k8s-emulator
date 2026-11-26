@@ -1,6 +1,6 @@
-import type { DeploymentResource, EngineState, KubernetesResource, NodeResource, PodResource, RandomSource } from "./types";
+import type { EngineState, KubernetesResource, NodeResource, PodResource, RandomSource } from "./types";
 import { appendEvent, putResource, resourceKey } from "./resources";
-import { reconcileDeployments } from "./reconcile";
+import { reconcileDeployments, reconcileReplicaSets, syncDeploymentStatuses } from "./reconcile";
 import { schedulePod } from "./scheduler";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
@@ -49,13 +49,14 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   const next: EngineState = structuredClone(state);
   next.tick += 1;
 
+  // Control-plane order: Deployment -> ReplicaSet -> scheduler/kubelet.
   reconcileDeployments(next);
+  reconcileReplicaSets(next);
 
   const nodes = getNodes(next);
-  const pods = getPods(next);
-  for (const pod of pods) {
+  for (const pod of getPods(next)) {
     if (pod.status.phase !== "Pending" || pod.spec.nodeName) continue;
-    const result = schedulePod(pod, nodes, pods);
+    const result = schedulePod(pod, nodes, getPods(next));
     if (result.node) {
       pod.spec.nodeName = result.node.metadata.name;
       pod.status.conditions = [
@@ -70,19 +71,10 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   }
 
   for (const pod of getPods(next)) updatePodReadiness(next, pod);
+  reconcileReplicaSets(next);
+  syncDeploymentStatuses(next);
 
-  for (const resource of Object.values(next.resources)) {
-    if (resource.kind !== "Deployment") continue;
-    const deployment = resource as DeploymentResource;
-    const owned = getPods(next).filter((pod) => pod.ownerReferences?.some((owner) => owner.uid === deployment.metadata.uid));
-    const ready = owned.filter((pod) => pod.status.phase === "Running").length;
-    deployment.status.readyReplicas = ready;
-    deployment.status.availableReplicas = ready;
-    putResource(next, deployment);
-  }
-
-  // Consume one deterministic random value per tick so snapshots can be replayed
-  // with the same random stream as future stochastic simulation features are added.
+  // Consume one deterministic random value per tick for future stochastic controllers.
   rng.next();
   return next;
 }
