@@ -342,7 +342,7 @@ function basePod(over: Partial<Pod>): Pod {
 
 /** Adapt the canvas store's lightweight objects to the engine scheduler contract. */
 function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?: string; reason?: string } {
-  const engineNodes: NodeResource[] = nodes.filter((node) => node.role === 'worker').map((node) => ({
+  const engineNodes: NodeResource[] = nodes.filter((node) => node.role === 'worker').map((node): NodeResource => ({
     apiVersion: 'v1',
     kind: 'Node',
     metadata: { name: node.name, namespace: undefined, uid: node.id, resourceVersion: 1, generation: 1, labels: { 'kubernetes.io/hostname': node.name, 'node-role.kubernetes.io/worker': '' }, annotations: {}, creationTimestamp: 0 },
@@ -350,7 +350,7 @@ function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?:
     status: { conditions: [{ type: 'Ready', status: true }] },
   }))
   const nodeByName = new Map(engineNodes.map((node) => [node.metadata.name, node.metadata.uid]))
-  const enginePods: PodResource[] = pods.map((item) => ({
+  const enginePods: PodResource[] = pods.map((item): PodResource => ({
     apiVersion: 'v1',
     kind: 'Pod',
     metadata: { name: item.name, namespace: item.namespace, uid: item.id, resourceVersion: 1, generation: 1, labels: item.labels, annotations: {}, creationTimestamp: item.ageTicks },
