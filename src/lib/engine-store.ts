@@ -23,6 +23,6 @@ export const engineStore={
  setHeartbeat:(name:string,enabled:boolean)=>publish(setNodeHeartbeat(snapshot,name,enabled)),
  cordon:(name:string,value=true)=>publish(cordonNode(snapshot,name,value)),drain:(name:string)=>publish(drainNode(snapshot,name)),
  applyYaml:(yaml:string)=>{const x=applyManifests(snapshot,yaml);publish(x.state);return x.messages},
- kubectl:(command:string)=>{const x=runKubectl(snapshot,command);if(x.state!==snapshot)publish(x.state);return x}
+ kubectl:(command:string,stdin?:string)=>{const x=runKubectl(snapshot,command,stdin);if(x.state!==snapshot)publish(x.state);return x}
 }
 export function useEngineSnapshot<T>(selector:(s:EngineState)=>T):T{const state=useSyncExternalStore(engineStore.subscribe,engineStore.getSnapshot,engineStore.getSnapshot);return selector(state)}

@@ -42,6 +42,8 @@ The existing Next.js/React Flow interface is under `src/`. The pure TypeScript s
 
 See [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md) for the engine contract, current boundaries and migration milestones.
 
-## Roadmap
+## Engine console and known boundaries
 
-The next stages are UI integration, realistic container and node lifecycle, deployment rollouts, autoscaling, networking, storage/security modeling, YAML/kubectl workflows, and guided failure scenarios.
+Open the Engine Console in the lower-right of the canvas. The terminal supports `kubectl get`, `describe`, `logs`, `delete`, `scale`, `get events`, and `apply -f -` (the YAML editor is stdin). The YAML importer accepts multi-document manifests for supported core, apps and batch resources and normalizes common CPU/memory quantities. It is a safe YAML subset, not a complete YAML 1.2 implementation.
+
+The console is an engine-owned API sandbox seeded with the canvas node inventory. The existing visual resource forms still use their compatibility-facing Zustand model; routing every legacy create/edit/delete action through the new engine CRUD API is the remaining cutover step. The simulator is educational and does not provide full Kubernetes API compatibility, admission, RBAC, PDB, or all kubectl flags.

@@ -44,12 +44,39 @@ export function parseYamlDocuments(source:string):unknown[]{
 const versions:Record<string,string>={Pod:"v1",Node:"v1",Service:"v1",PersistentVolumeClaim:"v1",Deployment:"apps/v1",ReplicaSet:"apps/v1",DaemonSet:"apps/v1",StatefulSet:"apps/v1",Job:"batch/v1",CronJob:"batch/v1"};
 function defaultStatus(kind:string):any{
  switch(kind){case"Pod":return{phase:"Pending",conditions:[],containerStatuses:[]};case"Node":return{conditions:[{type:"Ready",status:true}]};case"Deployment":return{observedGeneration:0,replicas:0,updatedReplicas:0,readyReplicas:0,availableReplicas:0,conditions:[]};case"ReplicaSet":return{observedGeneration:0,replicas:0,readyReplicas:0,availableReplicas:0};case"DaemonSet":return{desiredNumberScheduled:0,currentNumberScheduled:0,numberReady:0,numberAvailable:0,observedGeneration:0};case"StatefulSet":return{replicas:0,readyReplicas:0,currentReplicas:0,observedGeneration:0};case"Job":return{active:0,succeeded:0,failed:0,conditions:[]};case"CronJob":return{active:[]};case"PersistentVolumeClaim":return{phase:"Pending"};case"Service":return{clusterIP:"10.96.0.10",endpoints:[]};default:return{}}}
+function cpuQuantity(value:unknown):number {
+ if(typeof value==="number")return value;
+ const text=String(value??"0").trim();
+ if(text.endsWith("m"))return Number(text.slice(0,-1))||0;
+ return (Number(text)||0)*1000;
+}
+function memoryQuantity(value:unknown):number {
+ if(typeof value==="number")return value;
+ const match=String(value??"0").trim().match(/^([0-9.]+)(Ki|Mi|Gi|Ti)?$/);
+ if(!match)return 0;
+ const amount=Number(match[1]),unit=match[2]??"Mi";
+ return amount*({Ki:1/1024,Mi:1,Gi:1024,Ti:1048576}[unit]??1);
+}
+function normalizePodSpec(spec:any):any {
+ const result={...spec};
+ for(const key of ["containers","initContainers"]) if(Array.isArray(result[key])) result[key]=result[key].map((container:any)=>{
+  const resources=container.resources??{},requests=resources.requests??{},limits=resources.limits??{};
+  return {...container,resources:{...resources,requests:{...requests,cpuMilli:requests.cpuMilli??cpuQuantity(requests.cpu),memoryMi:requests.memoryMi??memoryQuantity(requests.memory)},limits:{...limits,...(limits.cpu!==undefined?{cpuMilli:cpuQuantity(limits.cpu)}:{}),...(limits.memory!==undefined?{memoryMi:memoryQuantity(limits.memory)}:{})}}};
+ });
+ return result;
+}
+function normalizeSpec(kind:string,spec:any):any {
+ if(kind==="Pod")return normalizePodSpec(spec);
+ if(["Deployment","ReplicaSet","DaemonSet","StatefulSet","Job"].includes(kind)&&spec.template?.spec)return {...spec,template:{...spec.template,spec:normalizePodSpec(spec.template.spec)}};
+ if(kind==="CronJob"&&spec.jobTemplate?.template?.spec)return {...spec,jobTemplate:{...spec.jobTemplate,template:{...spec.jobTemplate.template,spec:normalizePodSpec(spec.jobTemplate.template.spec)}}};
+ return spec;
+}
 export function normalizeManifest(value:unknown):KubernetesResource{
  if(!value||typeof value!=="object")throw new Error("Manifest must be an object");
  const raw=value as any,kind=String(raw.kind??"");if(!versions[kind])throw new Error("Unsupported resource kind: "+kind);
  if(raw.apiVersion!==versions[kind])throw new Error(kind+" requires apiVersion "+versions[kind]);
  if(!raw.metadata?.name)throw new Error("metadata.name is required");
- return {...raw,apiVersion:versions[kind],kind,metadata:{name:String(raw.metadata.name),...(kind==="Node"?{}:{namespace:String(raw.metadata.namespace??"default")}),uid:String(raw.metadata.uid??"manifest-"+kind.toLowerCase()+"-"+raw.metadata.name),resourceVersion:Number(raw.metadata.resourceVersion??0),generation:Number(raw.metadata.generation??1),labels:raw.metadata.labels??{},annotations:raw.metadata.annotations??{},creationTimestamp:0},spec:raw.spec??{},status:raw.status??defaultStatus(kind)} as KubernetesResource;
+ return {...raw,apiVersion:versions[kind],kind,metadata:{name:String(raw.metadata.name),...(kind==="Node"?{}:{namespace:String(raw.metadata.namespace??"default")}),uid:String(raw.metadata.uid??"manifest-"+kind.toLowerCase()+"-"+raw.metadata.name),resourceVersion:Number(raw.metadata.resourceVersion??0),generation:Number(raw.metadata.generation??1),labels:raw.metadata.labels??{},annotations:raw.metadata.annotations??{},creationTimestamp:0},spec:normalizeSpec(kind,raw.spec??{}),status:raw.status??defaultStatus(kind)} as KubernetesResource;
 }
 export function applyManifests(state:EngineState,source:string):{state:EngineState;messages:string[]}{
  let current=structuredClone(state);const messages:string[]=[];
@@ -65,6 +92,7 @@ function kindName(input:string):any{const map:Record<string,string>={pods:"Pod",
 export function runKubectl(state:EngineState,command:string):KubectlResult{
  const args=command.trim().split(/\s+/);if(!args[0])return{state,output:""};if(args[0]!=="kubectl")return{state,output:"command not found: use kubectl",error:true};
  const verb=args[1],ns=args.includes("-n")?args[args.indexOf("-n")+1]:"default";
+ if(state.controlPlane?.apiServerAvailable===false)return{state,output:"The Kubernetes API server is unavailable",error:true};
  if(verb==="get"&&args[2]==="events")return{state,output:state.events.map(e=>e.type+"\t"+e.reason+"\t"+e.message).join("\n")||"No events"};
  if(verb==="get"){const kind=args[2]==="all"?undefined:kindName(args[2]??"");if(args[2]!=="all"&&!kind)return{state,output:"unsupported resource type: "+args[2],error:true};const rows=listResources(state,kind,ns).map(r=>r.kind+"\t"+r.metadata.name+"\t"+(r.kind==="Pod"?(r as any).status.phase:""));return{state,output:rows.join("\n")||"No resources found"}}
  if(verb==="describe"||verb==="logs"||verb==="delete"||verb==="scale"){

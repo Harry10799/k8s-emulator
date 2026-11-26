@@ -29,7 +29,7 @@ spec:
 export function EngineConsole(){
  const [tab,setTab]=useState<'terminal'|'yaml'|'control'>('terminal'),[command,setCommand]=useState('kubectl get pods'),[yaml,setYaml]=useState(sample),[output,setOutput]=useState('Engine API ready.'),[failed,setFailed]=useState(false)
  const state=useEngineSnapshot(s=>s),nodes=Object.values(state.resources).filter(r=>r.kind==='Node')
- const execute=()=>{if(command.trim()==='kubectl apply -f -'){try{setOutput(engineStore.applyYaml(yaml).join('\n'));setFailed(false)}catch(e){setOutput(e instanceof Error?e.message:String(e));setFailed(true)}return}const r=engineStore.kubectl(command);setOutput(r.output);setFailed(Boolean(r.error))}
+ const execute=()=>{const r=engineStore.kubectl(command,yaml);setOutput(r.output);setFailed(Boolean(r.error))}
  const apply=()=>{try{setOutput(engineStore.applyYaml(yaml).join('\n'));setFailed(false)}catch(e){setOutput(e instanceof Error?e.message:String(e));setFailed(true)}}
  return <section className="absolute bottom-3 right-3 z-30 w-[min(560px,calc(100vw-24px))] rounded-xl border border-zinc-700 bg-zinc-950/95 shadow-2xl">
  <header className="flex items-center justify-between border-b border-zinc-800 px-3 py-2"><span className="flex items-center gap-2 text-xs text-zinc-200"><Terminal className="h-4 w-4 text-emerald-400"/> Engine Console</span><nav className="flex gap-1">{(['terminal','yaml','control'] as const).map(t=><button key={t} onClick={()=>setTab(t)} className={`rounded px-2 py-1 text-[10px] ${tab===t?'bg-zinc-700 text-white':'text-zinc-400'}`}>{t}</button>)}</nav></header>
