@@ -1,6 +1,9 @@
 'use client'
 
 import { create } from 'zustand'
+import { schedulePod } from '../../engine/scheduler'
+import { createSeededRng } from '../../engine/rng'
+import type { NodeResource, PodResource } from '../../engine/types'
 
 export type PodPhase =
   | 'Pending'
@@ -337,6 +340,30 @@ function basePod(over: Partial<Pod>): Pod {
 }
 
 
+/** Adapt the canvas store's lightweight objects to the engine scheduler contract. */
+function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?: string; reason?: string } {
+  const engineNodes: NodeResource[] = nodes.filter((node) => node.role === 'worker').map((node) => ({
+    apiVersion: 'v1',
+    kind: 'Node',
+    metadata: { name: node.name, namespace: undefined, uid: node.id, resourceVersion: 1, generation: 1, labels: { 'kubernetes.io/hostname': node.name, 'node-role.kubernetes.io/worker': '' }, annotations: {}, creationTimestamp: 0 },
+    spec: { capacity: { cpuMilli: node.cpuCapacity, memoryMi: node.memCapacity } },
+    status: { conditions: [{ type: 'Ready', status: true }] },
+  }))
+  const nodeByName = new Map(engineNodes.map((node) => [node.metadata.name, node.metadata.uid]))
+  const enginePods: PodResource[] = pods.map((item) => ({
+    apiVersion: 'v1',
+    kind: 'Pod',
+    metadata: { name: item.name, namespace: item.namespace, uid: item.id, resourceVersion: 1, generation: 1, labels: item.labels, annotations: {}, creationTimestamp: item.ageTicks },
+    spec: { containers: [{ name: 'main', image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } } }], ...(item.nodeId ? { nodeName: nodes.find((node) => node.id === item.nodeId)?.name } : {}) },
+    status: { phase: item.phase === 'Succeeded' ? 'Succeeded' : item.phase === 'Terminating' ? 'Failed' : item.phase === 'Running' ? 'Running' : 'Pending', conditions: [], containerStatuses: [] },
+  }))
+  const target = enginePods.find((candidate) => candidate.metadata.uid === pod.id)
+  if (!target) return { reason: 'Pod could not be adapted for scheduling' }
+  const result = schedulePod(target, engineNodes, enginePods)
+  return result.node ? { nodeId: nodeByName.get(result.node.metadata.name) } : { reason: result.reason }
+}
+
+
 export const useCluster = create<ClusterState>((set, get) => ({
   nodes: [
     { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
@@ -387,6 +414,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       }
       s.tickCount = state.tickCount + 1
       const t = s.tickCount
+      // Re-seeding per tick makes crash injection reproducible for the same tick.
+      const tickRng = createSeededRng(0x5eed1234 ^ t)
       const workers = () => s.nodes.filter((n) => n.role === 'worker')
 
       const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
@@ -405,29 +434,21 @@ export const useCluster = create<ClusterState>((set, get) => ({
         }
       }
 
-      // ---- scheduler for unbound Pending pods ----
+      // ---- scheduler for unbound Pending pods (engine filter/score pipeline) ----
       for (const pod of s.pods) {
         if (pod.phase !== 'Pending' || pod.nodeId) continue
-        const cands = workers().filter((n) => {
-          const u = nodeUsage(s.pods, n.id)
-          return u.cpu + pod.cpuRequest <= n.cpuCapacity && u.mem + pod.memRequest <= n.memCapacity
-        })
-        if (cands.length > 0) {
-          cands.sort((a, b) => {
-            const ua = nodeUsage(s.pods, a.id)
-            const ub = nodeUsage(s.pods, b.id)
-            return ua.cpu / a.cpuCapacity - ub.cpu / b.cpuCapacity
-          })
-          pod.nodeId = cands[0].id
+        const result = scheduleWithEngine(pod, s.nodes, s.pods)
+        if (result.nodeId) {
+          const host = s.nodes.find((node) => node.id === result.nodeId)
+          pod.nodeId = result.nodeId
           pod.phase = 'ContainerCreating'
           pod.phaseTicks = 0
-          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${cands[0].name}`, pod.name)
-          podLog(pod, t, `Assigned to ${cands[0].name}`)
+          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${host?.name ?? result.nodeId}`, pod.name)
+          podLog(pod, t, `Assigned to ${host?.name ?? result.nodeId}`)
         } else if (t % 4 === 0) {
-          logEvent(s, 'Warning', 'FailedScheduling', `0/${workers().length} nodes are available: insufficient cpu/mem for ${pod.name}`, pod.name)
+          logEvent(s, 'Warning', 'FailedScheduling', result.reason ?? `0/${workers().length} nodes are available`, pod.name)
         }
       }
-
       // ---- pod lifecycle ----
       for (const pod of s.pods) {
         pod.ageTicks += 1
@@ -450,7 +471,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
                 logEvent(s, 'Normal', 'Completed', `Pod ${pod.name} completed (job)`, pod.name)
                 podLog(pod, t, 'Job completed successfully')
               }
-            } else if (Math.random() < pod.crashRate) {
+            } else if (tickRng.next() < pod.crashRate) {
               pod.phase = 'CrashLoopBackOff'
               pod.phaseTicks = 0
               pod.restarts += 1
