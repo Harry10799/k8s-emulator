@@ -2,6 +2,7 @@ import type { EngineState, KubernetesResource, NodeResource, PodResource, Random
 import { appendEvent, putResource, resourceKey } from "./resources";
 import { reconcileDeployments, reconcileReplicaSets, syncDeploymentStatuses } from "./reconcile";
 import { schedulePod } from "./scheduler";
+import { reconcileNodeResources } from "./resource-management";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
   const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [] };
@@ -205,6 +206,7 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   next.events = scheduled.events;
 
   for (const pod of getPods(next)) advancePodLifecycle(next, pod);
+  reconcileNodeResources(next);
   reconcileReplicaSets(next);
   syncDeploymentStatuses(next);
 

@@ -47,6 +47,8 @@ export interface ContainerSpec {
   livenessProbe?: ProbeSpec;
   /** Optional deterministic workload behavior for educational scenarios. */
   simulatedMemoryUsageMi?: number;
+  /** Requested CPU usage for this tick; defaults to the CPU request. */
+  simulatedCpuUsageMilli?: number;
   runForTicks?: number;
   exitCode?: number;
 }
@@ -77,8 +79,11 @@ export interface PodResource {
   status: {
     phase: PodPhase;
     conditions: Array<{ type: "Ready" | "PodScheduled"; status: boolean; reason?: string; message?: string }>;
+    qosClass?: "Guaranteed" | "Burstable" | "BestEffort";
+    resourceUsage?: { cpuMilli: number; memoryMi: number; cpuThrottledMilli: number };
     containerStatuses: Array<{
       name: string;
+      usage?: { cpuMilli: number; memoryMi: number; cpuThrottledMilli: number };
       ready: boolean;
       restartCount: number;
       state: "Waiting" | "Running" | "Terminated";
@@ -106,7 +111,10 @@ export interface NodeResource {
     allocatable?: { cpuMilli: number; memoryMi: number };
     taints?: Array<{ key: string; value?: string; effect: "NoSchedule" | "PreferNoSchedule" | "NoExecute" }>;
   };
-  status: { conditions: Array<{ type: "Ready"; status: boolean; reason?: string }> };
+  status: {
+    conditions: Array<{ type: "Ready" | "MemoryPressure"; status: boolean; reason?: string; message?: string }>;
+    resourceUsage?: { cpuMilli: number; memoryMi: number };
+  };
 }
 
 export interface ReplicaSetResource {

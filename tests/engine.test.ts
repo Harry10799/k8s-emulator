@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { calculatePodResourceUsage, classifyPodQoS } from "../engine";
 import { createInitialState, createSeededRng, schedulePendingPods, step, type DeploymentResource, type NodeResource, type PodResource, type ReplicaSetResource } from "../engine";
 
 function node(name: string): NodeResource {
@@ -173,6 +174,50 @@ describe("simulation engine", () => {
     const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
     expect(actual.status.phase).toBe("Running");
     expect(actual.status.conditions.find((c) => c.type === "Ready")?.status).toBe(false);
+  });
+
+  it("classifies BestEffort, Burstable, and Guaranteed QoS", () => {
+    const makePod = (resources: PodResource["spec"]["containers"][number]["resources"]): PodResource => ({
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "qos", namespace: "default", uid: "qos", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox", resources }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    });
+    expect(classifyPodQoS(makePod({ requests: { cpuMilli: 0, memoryMi: 0 } }))).toBe("BestEffort");
+    expect(classifyPodQoS(makePod({ requests: { cpuMilli: 100, memoryMi: 64 } }))).toBe("Burstable");
+    expect(classifyPodQoS(makePod({ requests: { cpuMilli: 100, memoryMi: 64 }, limits: { cpuMilli: 100, memoryMi: 64 } }))).toBe("Guaranteed");
+  });
+
+  it("calculates CPU throttling when usage exceeds a CPU limit", () => {
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "cpu-hog", namespace: "default", uid: "cpu-hog", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox", resources: { requests: { cpuMilli: 100, memoryMi: 64 }, limits: { cpuMilli: 200, memoryMi: 256 } }, simulatedCpuUsageMilli: 500 }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    };
+    const usage = calculatePodResourceUsage(pod);
+    expect(usage.cpuMilli).toBe(200);
+    expect(usage.cpuThrottledMilli).toBe(300);
+  });
+
+  it("evicts BestEffort Pods first under node memory pressure", () => {
+    const bestEffort: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "be", namespace: "default", uid: "be", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { nodeName: "worker-a", containers: [{ name: "app", image: "busybox", resources: { requests: { cpuMilli: 0, memoryMi: 0 } }, simulatedMemoryUsageMi: 950 }] },
+      status: { phase: "Running", conditions: [{ type: "Ready", status: true }], containerStatuses: [{ name: "app", ready: true, restartCount: 0, state: "Running" }] },
+    };
+    const guaranteed: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "guaranteed", namespace: "default", uid: "guaranteed", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { nodeName: "worker-a", containers: [{ name: "app", image: "busybox", resources: { requests: { cpuMilli: 100, memoryMi: 100 }, limits: { cpuMilli: 100, memoryMi: 100 } } }] },
+      status: { phase: "Running", conditions: [{ type: "Ready", status: true }], containerStatuses: [{ name: "app", ready: true, restartCount: 0, state: "Running" }] },
+    };
+    const result = step(createInitialState([node("worker-a"), bestEffort, guaranteed]), createSeededRng(99));
+    const actual = resourcesOfKind<PodResource>(result, "Pod");
+    expect(actual.find((pod) => pod.metadata.name === "be")?.status.conditions.some((condition) => condition.reason === "Evicted")).toBe(true);
+    expect(actual.find((pod) => pod.metadata.name === "guaranteed")?.status.phase).toBe("Running");
+    expect(resourcesOfKind<NodeResource>(result, "Node")[0].status.conditions.some((condition) => condition.type === "MemoryPressure")).toBe(false);
   });
 
 });
