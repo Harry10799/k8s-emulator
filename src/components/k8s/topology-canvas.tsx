@@ -9,6 +9,7 @@ import {
   Handle,
   Position,
   type Edge,
+  MarkerType,
   type Node,
   type NodeProps,
   type NodeTypes,
@@ -410,7 +411,20 @@ export function TopologyCanvas() {
       cursorY += bandHeight + 60
     }
 
-    return { flowNodes: [...frames, ...cards], flowEdges: edges, total: totalRes }
+    // Give every relationship a visible direction and animate the flow while the cluster is running.
+    // React Flow's `animated` edge style is applied to the path itself; node handles remain non-connectable.
+    const flowEdges: Edge[] = edges.map((edge) => {
+      const stroke = (edge.style?.stroke as string | undefined) ?? '#71717a'
+      return {
+        ...edge,
+        type: 'smoothstep',
+        animated: running,
+        markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
+        style: { ...edge.style, stroke, strokeWidth: Math.max(2, Number(edge.style?.strokeWidth ?? 1.5)) },
+      }
+    })
+
+    return { flowNodes: [...frames, ...cards], flowEdges, total: totalRes }
   }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running])
 
   return (
