@@ -129,6 +129,14 @@ export function reconcileCronJobs(state: EngineState): void {
 
 export function reconcileJobs(state: EngineState): void {
   for (const job of values<JobResource>(state, "Job")) {
+    const alreadyComplete = job.status.conditions.some(condition => condition.type === "Complete" && condition.status);
+    if (alreadyComplete) {
+      if (state.tick - job.metadata.creationTimestamp > 30) {
+        for (const pod of values<PodResource>(state, "Pod").filter(item => owns(item, job.metadata.uid))) delete state.resources[resourceKey(pod)];
+        delete state.resources[resourceKey(job)];
+      }
+      continue;
+    }
     const pods = values<PodResource>(state, "Pod").filter(pod => owns(pod, job.metadata.uid));
     const succeeded = pods.filter(pod => pod.status.phase === "Succeeded").length;
     const failed = pods.filter(pod => pod.status.phase === "Failed").length;
