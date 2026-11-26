@@ -15,6 +15,7 @@ import '@xyflow/react/dist/style.css'
 import { useCluster, nodeUsage, type DropPayload } from '@/lib/cluster-store'
 import { WorkerNodeCard, type WorkerNodeData } from './worker-node-card'
 import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
+import { CanvasRegistry } from './canvas-registry'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
@@ -133,6 +134,9 @@ export function ClusterCanvas() {
           ))}
         </div>
       )}
+
+      {/* cluster-level resources (cm/secret/svc/cj/job) visible + editable on canvas */}
+      <CanvasRegistry />
     </div>
   )
 }
