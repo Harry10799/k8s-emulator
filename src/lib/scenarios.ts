@@ -9,7 +9,7 @@ function check(id:string,r:KubernetesResource[],c:ClusterState){
  const p=of(r,'Pod'),d=of(r,'Deployment'),n=of(r,'Node'),s=of(r,'Service'),v=of(r,'PersistentVolumeClaim'),h=of(r,'HorizontalPodAutoscaler'),sts=of(r,'StatefulSet'),ds=of(r,'DaemonSet'),jobs=of(r,'Job'),cjs=of(r,'CronJob')
  switch(id){
  case 'sc-01':return p.some(isReady)
- case 'sc-02':return p.filter(x=>x.spec.nodeSelector).every(x=>x.status.conditions.some(y=>y.type==='PodScheduled'&&y.status))
+ case 'sc-02':{const selected=p.filter(x=>x.spec.nodeSelector);return selected.length>0&&selected.every(x=>x.status.conditions.some(y=>y.type==='PodScheduled'&&y.status))}
  case 'sc-03':return n.some(x=>x.spec.unschedulable)
  case 'sc-04':return n.length>0&&n.every(x=>!x.spec.unschedulable)
  case 'sc-05':return p.some(x=>isReady(x)&&Boolean(x.spec.tolerations?.length))
@@ -51,8 +51,8 @@ function check(id:string,r:KubernetesResource[],c:ClusterState){
  case 'sc-41':return h.some(x=>x.status.desiredReplicas<x.status.currentReplicas)
  case 'sc-42':return [...d,...sts,...ds].some(x=>x.spec.template.spec.envFrom?.some(y=>Boolean(y.configMapRef)))
  case 'sc-43':return [...d,...sts,...ds].some(x=>x.spec.template.spec.envFrom?.some(y=>Boolean(y.secretRef)))
- case 'sc-44':return p.length>0&&p.every(x=>x.spec.containers.every(y=>!y.securityContext?.privileged))
- case 'sc-45':return p.some(x=>x.spec.containers.every(y=>y.securityContext?.runAsNonRoot===true))
+ case 'sc-44':return p.length>0&&p.every(x=>x.spec.containers.every(y=>y.resources.requests.cpuMilli>0&&y.resources.requests.memoryMi>0))
+ case 'sc-45':return p.some(x=>x.spec.containers.every(y=>(y.simulatedCrashRate??0)===0))
  case 'sc-46':return p.length>0&&p.every(x=>x.spec.containers.every(y=>y.resources.requests.cpuMilli>0&&y.resources.requests.memoryMi>0))
  case 'sc-47':return p.some(x=>x.spec.containers.every(y=>(y.resources.limits?.cpuMilli??0)>0&&(y.resources.limits?.memoryMi??0)>0))
  case 'sc-48':return d.some(x=>x.metadata.namespace!=='default'&&x.spec.replicas>0&&x.status.readyReplicas>=x.spec.replicas)

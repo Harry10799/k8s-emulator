@@ -64,3 +64,8 @@ The canvas includes pause/resume, single-step and bounded rewind history (up to 
 ## Simulation Lab learning paths
 
 The Simulation Lab is a dedicated top-level workspace with 50 guided Kubernetes scenarios across Scheduling, Workloads, Networking, Storage, Health & Probes, Scaling, Security & Config, and Operations. Each mission includes an objective, hint, and a live validator reading current engine and cluster state. The workbench Explorer and Inspector sidebars can be collapsed to maximize canvas space.
+
+
+## Simulation Lab learning paths
+
+The Simulation Lab is a dedicated top-level workspace with 50 guided Kubernetes scenarios across Scheduling, Workloads, Networking, Storage, Health & Probes, Scaling, Security & Config, and Operations. Each mission includes an objective, hint, and a live validator reading current engine and cluster state. The workbench Explorer and Inspector sidebars can be collapsed to maximize canvas space.
