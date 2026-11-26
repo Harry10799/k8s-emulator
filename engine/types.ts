@@ -208,6 +208,12 @@ export interface PersistentVolumeClaimResource {
   status: { phase: "Pending" | "Bound"; volumeName?: string; boundAtTick?: number };
 }
 
+export interface HorizontalPodAutoscalerResource {
+  apiVersion: "autoscaling/v2"; kind: "HorizontalPodAutoscaler"; metadata: ObjectMetadata;
+  spec: { scaleTargetRef: { apiVersion: "apps/v1"; kind: "Deployment"; name: string }; minReplicas: number; maxReplicas: number; metrics: Array<{ type: "Resource"; resource: { name: "cpu"; target: { type: "Utilization"; averageUtilization: number } } }> };
+  status: { currentReplicas: number; desiredReplicas: number; currentCPUUtilizationPercentage?: number; lastScaleTick?: number; conditions: Array<{ type: "AbleToScale" | "ScalingActive"; status: boolean; reason: string }> };
+}
+
 export interface ServiceResource {
   apiVersion: "v1";
   kind: "Service";
@@ -216,7 +222,7 @@ export interface ServiceResource {
   status: { clusterIP: string; nodePort?: number; externalIP?: string; endpoints: Array<{ podName: string; podUid: string; nodeName?: string; port: number }> };
 }
 
-export type KubernetesResource = PodResource | NodeResource | ReplicaSetResource | DeploymentResource | DaemonSetResource | StatefulSetResource | JobResource | CronJobResource | PersistentVolumeClaimResource | ServiceResource;
+export type KubernetesResource = PodResource | NodeResource | ReplicaSetResource | DeploymentResource | DaemonSetResource | StatefulSetResource | JobResource | CronJobResource | PersistentVolumeClaimResource | ServiceResource | HorizontalPodAutoscalerResource;
 
 export interface EngineEvent {
   id: string;
@@ -239,6 +245,7 @@ export interface EngineState {
   chaos?: boolean;
   controlPlane?: { apiServerAvailable: boolean; schedulerAvailable: boolean; controllerManagerAvailable: boolean; etcdAvailable: boolean };
   nodeController?: { heartbeatTimeoutTicks: number; podEvictionTimeoutTicks: number };
+  simulatedLoadPercent?: number;
 }
 
 export interface RandomSource {

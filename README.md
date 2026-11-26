@@ -54,3 +54,8 @@ The simulator is educational and does not provide full Kubernetes API compatibil
 ### Interactive topology and traffic
 
 The Topology view supports typed drag-to-connect relationships: Service → Deployment (copies the Deployment selector), Ingress → Service (sets the backend), ConfigMap/Secret → Pod (sets environment references), and PVC → StatefulSet (uses the claim size for the StatefulSet storage template). Use **Send test request** to simulate an HTTP request through the first matching Ingress, its Service, and a Running selector-matching Pod. Requests without a ready endpoint are rejected with an explanatory status.
+
+
+### Simulation controls, challenges and autoscaling
+
+The canvas includes pause/resume, single-step and bounded rewind history (up to 120 ticks). The Simulation Lab includes a Pending Pod troubleshooting exercise and a readiness-gated zero-downtime rollout exercise with live validators. It also exposes a simulated CPU load control and can attach an autoscaling/v2-style HPA to a selected Deployment. HPA decisions use simulated CPU utilization and reconcile Deployment replicas within configured minimum/maximum bounds. This is an educational approximation of Kubernetes HPA behavior.

@@ -14,7 +14,7 @@ export interface CanvasPod {
   phase: "Pending" | "ContainerCreating" | "Running" | "CrashLoopBackOff" | "Terminating" | "Succeeded";
   image: string; cpuRequest: number; memRequest: number; restarts: number; crashRate: number;
   phaseTicks: number; ageTicks: number; requiredNode: string | null; completionTicks: number | null;
-  nodeId: string | null; logs: string[];
+  nodeId: string | null; logs: string[]; nodeSelector?: Record<string,string>;
   ownerId?: string | null; ownerKind?: "replicaset" | "daemonset" | "statefulset" | "job" | "deployment" | "none";
   envConfigMap?: string | null; envSecret?: string | null; ports?: number[]; mountedPvc?: string | null;
 }
@@ -135,6 +135,7 @@ function toPod(pod: CanvasPod, nodes: CanvasNode[], previous?: PodResource): Pod
       }],
       restartPolicy: pod.completionTicks !== null ? "Never" : "Always",
       ...(targetName ? { nodeName: targetName } : {}),
+      ...(pod.nodeSelector ? { nodeSelector: { ...pod.nodeSelector } } : {}),
       ...(pod.mountedPvc ? { volumeClaimName: pod.mountedPvc } : {}),
     },
     status,

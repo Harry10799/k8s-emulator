@@ -2,7 +2,8 @@
 
 import { create } from 'zustand'
 import { createSeededRng } from '../../engine/rng'
-import { advanceCanvasRuntime, resetCanvasRuntime, type CanvasControllers } from '../../engine/canvas-runtime'
+import { advanceCanvasRuntime, resetCanvasRuntime, getCanvasRuntimeState, setCanvasRuntimeState, type CanvasControllers } from '../../engine/canvas-runtime'
+import type { EngineState } from '../../engine/types'
 
 export type PodPhase =
   | 'Pending'
@@ -56,6 +57,7 @@ export interface Pod {
   ports: number[]
   logs: string[]
   nodeId: string | null
+  nodeSelector?: Labels
   mountedPvc: string | null // statefulset volumeClaimTemplate PVC name
 }
 
@@ -213,6 +215,8 @@ const rand = (n: number) => {
 const simTime = (t: number) => `00:${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 
 let nextId = 1
+const simulationHistory: Array<{ cluster: Partial<ClusterState>; engine: EngineState }> = []
+const HISTORY_LIMIT = 120
 const uid = (p: string) => `${p}-${nextId++}`
 
 export function selectorMatches(selector: Labels, labels: Labels): boolean {
@@ -249,6 +253,7 @@ export interface ClusterState {
   editing: SelectionId // resource being edited in dialog
 
   tick: () => void
+  rewind: () => boolean
   setRunning: (v: boolean) => void
   setSpeed: (v: number) => void
   setChaos: (v: boolean) => void
@@ -365,6 +370,9 @@ export const useCluster = create<ClusterState>((set, get) => ({
 
   tick: () =>
     set((state) => {
+      const { nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount } = state
+      simulationHistory.push({ cluster: structuredClone({ nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount }), engine: structuredClone(getCanvasRuntimeState()) })
+      if (simulationHistory.length > HISTORY_LIMIT) simulationHistory.shift()
       const s: ClusterState = {
         ...state,
         nodes: state.nodes.map((n) => ({ ...n })),
@@ -426,6 +434,13 @@ export const useCluster = create<ClusterState>((set, get) => ({
       return s
     }),
 
+  rewind: () => {
+    const previous = simulationHistory.pop()
+    if (!previous) return false
+    set(state => ({ ...state, ...previous.cluster, running: false }))
+    setCanvasRuntimeState(previous.engine)
+    return true
+  },
   setRunning: (v) => set({ running: v }),
   setSpeed: (v) => set({ speed: v }),
   setChaos: (v) => set({ chaos: v }),
@@ -470,7 +485,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const name = (payload.name as string) ?? 'res'
       switch (kind) {
         case 'pod':
-          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }) as never]
+          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, image: (payload.image as string) ?? 'nginx:latest', nodeSelector: (payload.nodeSelector as Labels) ?? undefined, cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }) as never]
           logEvent(s, 'Normal', 'Created', `Pod created: ${name} (ns/${(payload.namespace as string) ?? 'default'})`, name)
           break
         case 'deployment':
@@ -547,6 +562,14 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const s = { ...state, events: [...state.events] } as ClusterState
       const name = (patch.name as string) ?? ''
       switch (kind) {
+        case 'pod': {
+          const pod = state.pods.find((item) => item.id === id)
+          if (!pod) return state
+          const next = { ...pod, ...patch, labels: (patch.labels as Labels) ?? pod.labels } as Pod
+          s.pods = state.pods.map((item) => item.id === id ? next : item)
+          logEvent(s, 'Normal', 'Updated', `Pod ${next.name} updated`, next.name)
+          break
+        }
         case 'deployment': {
           const dep = state.deployments.find((d) => d.id === id)
           if (!dep) return state
@@ -794,6 +817,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
     }),
 
   reset: () => {
+    simulationHistory.length = 0
     resetCanvasRuntime()
     nextId = 1
     idRng = createSeededRng(0x5eed1234)

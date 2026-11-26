@@ -35,6 +35,7 @@ export const engineStore = {
     if (result.ok && result.state) publish(result.state)
     return result
   },
+  setLoadPercent: (percent: number) => { const next = structuredClone(getCanvasRuntimeState()); next.simulatedLoadPercent = Math.max(0, Math.min(300, Math.round(percent))); publish(next) },
   setControlPlane: (key: 'apiServerAvailable' | 'schedulerAvailable' | 'controllerManagerAvailable' | 'etcdAvailable', available: boolean) => {
     const next = structuredClone(getCanvasRuntimeState())
     next.controlPlane ??= { apiServerAvailable: true, schedulerAvailable: true, controllerManagerAvailable: true, etcdAvailable: true }
