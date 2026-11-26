@@ -1,66 +1,65 @@
 'use client'
 
-import { Package, Layers, Flame, Boxes } from 'lucide-react'
-import type { DropPayload } from './cluster-canvas'
+import {
+  Package, Layers, Boxes, Flame, Network, FileJson, KeyRound, Clock, Briefcase, Copy, Server,
+} from 'lucide-react'
+import type { DropPayload } from '@/lib/cluster-store'
 
 const templates: (DropPayload & { title: string; desc: string; icon: typeof Package })[] = [
   {
-    kind: 'pod',
-    title: 'nginx pod',
-    desc: '500m CPU · 512Mi · stable',
-    image: 'nginx:latest',
-    cpuRequest: 500,
-    memRequest: 512,
-    crashRate: 0.02,
-    icon: Package,
+    kind: 'pod', title: 'pod · nginx', desc: '500m · 512Mi · stable', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0.02, name: 'nginx',
+    labels: { app: 'nginx' }, icon: Package,
   },
   {
-    kind: 'pod',
-    title: 'busybox pod',
-    desc: '250m CPU · 128Mi · light',
-    image: 'busybox:1.36',
-    cpuRequest: 250,
-    memRequest: 128,
-    crashRate: 0.02,
-    icon: Package,
+    kind: 'pod', title: 'pod · crashy', desc: 'CrashLoopBackOff demo', image: 'bug:latest', cpuRequest: 250, memRequest: 256, crashRate: 0.25, name: 'crashy',
+    labels: { app: 'crashy' }, icon: Flame,
   },
   {
-    kind: 'pod',
-    title: 'heavy pod',
-    desc: '3.5 CPU · 6Gi — fills a node',
-    image: 'postgres:16',
-    cpuRequest: 3500,
-    memRequest: 6144,
-    crashRate: 0.02,
-    icon: Boxes,
+    kind: 'deployment', title: 'deployment · web', desc: '3 replicas · self-healing', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0.02, replicas: 3, name: 'web',
+    labels: { app: 'web' }, selector: { app: 'web' }, icon: Layers,
   },
   {
-    kind: 'pod',
-    title: 'crashy pod',
-    desc: 'crashes often — CrashLoopBackOff demo',
-    image: 'bug:latest',
-    cpuRequest: 250,
-    memRequest: 256,
-    crashRate: 0.25,
-    icon: Flame,
+    kind: 'replicaset', title: 'replicaset · rs', desc: '2 replicas · no rollout', image: 'redis:7', cpuRequest: 250, memRequest: 256, crashRate: 0.02, replicas: 2, name: 'cache',
+    labels: { app: 'cache' }, selector: { app: 'cache' }, icon: Copy,
   },
   {
-    kind: 'deployment',
-    title: 'web deployment',
-    desc: '3 replicas · nginx · self-healing',
-    image: 'nginx:latest',
-    cpuRequest: 500,
-    memRequest: 512,
-    crashRate: 0.02,
-    replicas: 3,
-    icon: Layers,
+    kind: 'daemonset', title: 'daemonset · log agent', desc: 'one pod per node', image: 'fluentd:v1.16', cpuRequest: 100, memRequest: 128, crashRate: 0.02, name: 'log-agent',
+    labels: { app: 'log-agent' }, selector: { app: 'log-agent' }, icon: Server,
+  },
+  {
+    kind: 'statefulset', title: 'statefulset · db', desc: 'web-0, web-1… ordered', image: 'postgres:16', cpuRequest: 500, memRequest: 512, crashRate: 0.02, replicas: 3, name: 'db',
+    labels: { app: 'db' }, serviceName: 'db-headless', icon: Boxes,
+  },
+  {
+    kind: 'service', title: 'service · ClusterIP', desc: 'selector: app=web', serviceType: 'ClusterIP', port: 80, targetPort: 8080, name: 'web-svc',
+    selector: { app: 'web' }, icon: Network,
+  },
+  {
+    kind: 'service', title: 'service · NodePort', desc: 'exposes 30000–32767', serviceType: 'NodePort', port: 80, targetPort: 8080, name: 'web-np',
+    selector: { app: 'web' }, icon: Network,
+  },
+  {
+    kind: 'configmap', title: 'configmap · app-config', desc: 'editable key/value data', name: 'app-config',
+    data: { 'APP_MODE': 'production', 'LOG_LEVEL': 'info' }, icon: FileJson,
+  },
+  {
+    kind: 'secret', title: 'secret · db-creds', desc: 'sensitive key/value', name: 'db-creds',
+    data: { username: 'admin', password: 'changeme' }, icon: KeyRound,
+  },
+  {
+    kind: 'cronjob', title: 'cronjob · backup', desc: 'runs every 15s sim-time', schedule: '*/15', image: 'backup:latest', cpuRequest: 100, memRequest: 128, duration: 5, name: 'backup',
+    icon: Clock,
+  },
+  {
+    kind: 'job', title: 'job · migrate', desc: 'runs once → Succeeded', image: 'migrate:latest', cpuRequest: 100, memRequest: 128, duration: 6, name: 'migrate',
+    icon: Briefcase,
   },
 ]
 
 export function Palette() {
   return (
     <div className="p-3 space-y-2">
-      <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-1">Workloads — drag onto canvas</div>
+      <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-1">Resources — drag onto canvas</div>
       {templates.map((t) => (
         <div
           key={t.title}

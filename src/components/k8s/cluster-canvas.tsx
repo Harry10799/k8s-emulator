@@ -12,22 +12,13 @@ import {
   type NodeTypes,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCluster, nodeUsage } from '@/lib/cluster-store'
+import { useCluster, nodeUsage, type DropPayload } from '@/lib/cluster-store'
 import { WorkerNodeCard, type WorkerNodeData } from './worker-node-card'
 import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
   controlPlane: ControlPlaneCard,
-}
-
-export interface DropPayload {
-  kind: 'pod' | 'deployment'
-  image: string
-  cpuRequest: number
-  memRequest: number
-  crashRate: number
-  replicas?: number
 }
 
 export function ClusterCanvas() {
@@ -38,8 +29,7 @@ export function ClusterCanvas() {
   const speed = useCluster((s) => s.speed)
   const tick = useCluster((s) => s.tick)
   const moveNode = useCluster((s) => s.moveNode)
-  const addPod = useCluster((s) => s.addPod)
-  const addDeployment = useCluster((s) => s.addDeployment)
+  const createResource = useCluster((s) => s.createResource)
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
 
@@ -50,6 +40,7 @@ export function ClusterCanvas() {
     return () => clearInterval(interval)
   }, [running, speed, tick])
 
+  // canvas nodes: control plane + workers
   const flowNodes: Node[] = useMemo(() => {
     const cp: Node<ControlPlaneData> = {
       id: 'cp1',
@@ -105,40 +96,10 @@ export function ClusterCanvas() {
       const raw = event.dataTransfer.getData('application/k8s')
       if (!raw) return
       const payload = JSON.parse(raw) as DropPayload
-      const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
 
-      // find worker node whose card contains the drop point
-      let targetId: string | undefined
-      for (const n of nodes) {
-        if (n.role !== 'worker') continue
-        const w = 320
-        const h = 230
-        if (pos.x >= n.position.x && pos.x <= n.position.x + w && pos.y >= n.position.y && pos.y <= n.position.y + h) {
-          targetId = n.id
-          break
-        }
-      }
-      if (payload.kind === 'deployment') {
-        addDeployment({
-          name: payload.image.split(':')[0],
-          replicas: payload.replicas ?? 3,
-          image: payload.image,
-          cpuRequest: payload.cpuRequest,
-          memRequest: payload.memRequest,
-        })
-      } else {
-        addPod(
-          {
-            image: payload.image,
-            cpuRequest: payload.cpuRequest,
-            memRequest: payload.memRequest,
-            crashRate: payload.crashRate,
-          },
-          targetId ?? null
-        )
-      }
+      createResource({ ...payload, image: payload.image ?? 'nginx:latest' })
     },
-    [nodes, screenToFlowPosition, addPod, addDeployment]
+    [createResource]
   )
 
   return (

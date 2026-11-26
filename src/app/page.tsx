@@ -4,13 +4,16 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { Play, Pause, Plus, RotateCcw, Gauge, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toaster } from '@/components/ui/sonner'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { useCluster } from '@/lib/cluster-store'
 import { ClusterCanvas } from '@/components/k8s/cluster-canvas'
 import { Palette } from '@/components/k8s/palette'
 import { Inspector } from '@/components/k8s/inspector'
+import { EditDialog } from '@/components/k8s/edit-dialog'
 import { EventFeed } from '@/components/k8s/event-feed'
-import { WorkloadsPanel } from '@/components/k8s/workloads-panel'
+import { ResourceList } from '@/components/k8s/resource-list'
 
 function Toolbar() {
   const running = useCluster((s) => s.running)
@@ -28,7 +31,7 @@ function Toolbar() {
         <span className="text-lg leading-none">⎈</span>
         <div>
           <div className="text-sm font-bold text-zinc-100 tracking-tight">k8s playground</div>
-          <div className="text-[9px] text-zinc-500 -mt-0.5 hidden sm:block">drag-and-drop cluster simulator</div>
+          <div className="text-[9px] text-zinc-500 -mt-0.5 hidden sm:block">full-fledged cluster simulator · everything editable</div>
         </div>
       </div>
 
@@ -79,10 +82,24 @@ export default function Home() {
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 antialiased">
       <Toolbar />
       <div className="flex min-h-0 flex-1">
-        {/* left: palette + workloads */}
-        <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 overflow-y-auto custom-scroll">
-          <Palette />
-          <WorkloadsPanel />
+        {/* left: palette + resources */}
+        <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
+          <Tabs defaultValue="create" className="flex min-h-0 flex-col flex-1">
+            <TabsList className="mx-3 mt-2 grid grid-cols-2 bg-zinc-900 border border-zinc-800 shrink-0">
+              <TabsTrigger value="create" className="text-xs data-[state=active]:bg-zinc-800">Create</TabsTrigger>
+              <TabsTrigger value="resources" className="text-xs data-[state=active]:bg-zinc-800">Resources</TabsTrigger>
+            </TabsList>
+            <TabsContent value="create" className="flex-1 min-h-0 mt-0">
+              <ScrollArea className="h-full">
+                <Palette />
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="resources" className="flex-1 min-h-0 mt-0">
+              <ScrollArea className="h-full">
+                <ResourceList />
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
         </aside>
 
         {/* center: canvas + event feed */}
@@ -102,6 +119,7 @@ export default function Home() {
           <Inspector />
         </aside>
       </div>
+      <EditDialog />
       <Toaster theme="dark" />
     </div>
   )
