@@ -31,6 +31,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCluster } from '@/lib/cluster-store'
+import { getCanvasRuntimeState } from '../../../engine/canvas-runtime'
 import { useConnections } from '@/hooks/use-connections'
 import { useTraffic } from '@/hooks/use-traffic'
 
@@ -378,10 +379,13 @@ export function TopologyCanvas() {
           edges.push({ id: `e-cj-${c.id}-${j.id}`, source: nid('cronjob', c.id), target: nid('job', j.id), style: cjStyle })
         }
       }
-      // service → pods (selector match — like real endpoints)
+      // Service → Pod edges mirror the engine-published Ready endpoint set.
+      const engineResources = Object.values(getCanvasRuntimeState().resources)
       for (const v of nsSvcs) {
+        const engineService = engineResources.find(resource => resource.kind === 'Service' && resource.metadata.uid === v.id)
+        const endpointIds = new Set(engineService?.kind === 'Service' ? engineService.status.endpoints.map(endpoint => endpoint.podUid) : [])
         for (const p of nsPods) {
-          if (selectorMatches(v.selector as Labels, p.labels) && p.phase === 'Running') {
+          if (endpointIds.has(p.id)) {
             edges.push({
               id: `e-svc-${v.id}-${p.id}`,
               source: nid('service', v.id),
