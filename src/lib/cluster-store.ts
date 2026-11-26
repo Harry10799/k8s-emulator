@@ -466,6 +466,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const rs: ReplicaSet = {
             id: uid('rs'),
             name: `${dep.name}-${rand(6)}`,
+            namespace: dep.namespace,
             labels: { ...dep.labels },
             selector: { ...dep.selector },
             replicas: dep.replicas,
@@ -483,6 +484,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const rs: ReplicaSet = {
             id: uid('rs'),
             name: `${dep.name}-${rand(6)}`,
+            namespace: dep.namespace,
             labels: { ...dep.labels },
             selector: { ...dep.selector },
             replicas: dep.replicas,

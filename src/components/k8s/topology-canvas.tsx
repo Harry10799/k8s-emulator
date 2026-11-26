@@ -1,0 +1,432 @@
+'use client'
+
+import { useMemo } from 'react'
+import {
+  ReactFlow,
+  Background,
+  BackgroundVariant,
+  Controls,
+  Handle,
+  Position,
+  type Edge,
+  type Node,
+  type NodeProps,
+  type NodeTypes,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import {
+  Package,
+  Layers,
+  Copy,
+  Server,
+  Boxes,
+  Network,
+  FileJson,
+  KeyRound,
+  Clock,
+  Briefcase,
+  type LucideIcon,
+} from 'lucide-react'
+import { useCluster, selectorMatches, type Labels } from '@/lib/cluster-store'
+
+// ---------------------------------------------------------------- card sizes
+const NW = 190 // card width
+const NH = 54 // card height
+const VGAP = 14 // vertical gap between cards in a column
+const COLX = { providers: 0, controllers: 240, middle: 480, pods: 720 }
+
+type TopoCardData = {
+  selectionId: string
+  kind: string
+  name: string
+  sub: string
+  icon: LucideIcon
+  color: string
+  dot: string | null
+  dim: boolean
+}
+
+type TopoCardNode = Node<TopoCardData, 'topoCard'>
+type NsFrameData = { ns: string; count: number; width: number; height: number }
+type NsFrameNode = Node<NsFrameData, 'nsFrame'>
+
+const PHASE_DOT: Record<string, string> = {
+  Running: '#34d399',
+  Pending: '#fbbf24',
+  ContainerCreating: '#38bdf8',
+  CrashLoopBackOff: '#f87171',
+  Terminating: '#a1a1aa',
+  Succeeded: '#2dd4bf',
+}
+
+function TopoCard({ data }: NodeProps<TopoCardNode>) {
+  const selected = useCluster((s) => s.selected)
+  const select = useCluster((s) => s.select)
+  const setEditing = useCluster((s) => s.setEditing)
+  const Icon = data.icon
+  const isSel = selected === data.selectionId
+  return (
+    <div
+      onClick={() => select(data.selectionId)}
+      onDoubleClick={() => setEditing(data.selectionId)}
+      title="click to inspect · double-click to edit"
+      className={`group w-[190px] cursor-pointer rounded-lg border bg-zinc-900/95 px-2.5 py-2 shadow-md transition-colors ${
+        isSel ? 'border-emerald-500 ring-1 ring-emerald-500/40' : 'border-zinc-700 hover:border-zinc-500'
+      } ${data.dim ? 'opacity-40' : ''}`}
+    >
+      <div className="flex items-center gap-2">
+        {/* invisible handles so v13 can wire edges (card → card, left → right) */}
+        <Handle type="target" position={Position.Left} isConnectable={false} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
+        <Icon className="h-4 w-4 shrink-0" style={{ color: data.color }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-mono text-[11px] font-medium text-zinc-100">{data.name}</span>
+            {data.dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: data.dot }} />}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="shrink-0 text-[9px] uppercase tracking-wider text-zinc-500">{data.kind}</span>
+            <span className="truncate text-[9px] text-zinc-500">{data.sub}</span>
+          </div>
+        </div>
+        <Handle type="source" position={Position.Right} isConnectable={false} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
+      </div>
+    </div>
+  )
+}
+
+function NsFrame({ data }: NodeProps<NsFrameNode>) {
+  return (
+    <div
+      className="rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25"
+      style={{ width: data.width, height: data.height }}
+    >
+      <div className="px-3 pt-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+        namespace / {data.ns} · {data.count} resources
+      </div>
+    </div>
+  )
+}
+
+const nodeTypes: NodeTypes = { topoCard: TopoCard, nsFrame: NsFrame }
+
+// ---------------------------------------------------------------- graph build
+export function TopologyCanvas() {
+  const pods = useCluster((s) => s.pods)
+  const deployments = useCluster((s) => s.deployments)
+  const replicaSets = useCluster((s) => s.replicaSets)
+  const daemonSets = useCluster((s) => s.daemonSets)
+  const statefulSets = useCluster((s) => s.statefulSets)
+  const services = useCluster((s) => s.services)
+  const configMaps = useCluster((s) => s.configMaps)
+  const secrets = useCluster((s) => s.secrets)
+  const cronJobs = useCluster((s) => s.cronJobs)
+  const jobs = useCluster((s) => s.jobs)
+  const namespaces = useCluster((s) => s.namespaces)
+  const activeNamespace = useCluster((s) => s.activeNamespace)
+  const running = useCluster((s) => s.running)
+
+  const { flowNodes, flowEdges, total } = useMemo(() => {
+    const visibleNs = namespaces.filter((n) => activeNamespace === 'all' || n.name === activeNamespace)
+    // node ids must be colon-free (ReactFlow edge SVG ids break with ':'); selection ids keep 'kind:id' format for the store
+    const nid = (kind: string, id: string) => `t-${kind}-${id}`
+    const sid = (kind: string, id: string) => `${kind}:${id}`
+
+    const cards: Node[] = []
+    const edges: Edge[] = []
+    const frames: Node[] = []
+    let totalRes = 0
+    let cursorY = 0
+
+    const ownStyle = { stroke: '#71717a', strokeWidth: 1.5 }
+    const faded = { stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }
+    const svcStyle = { stroke: '#38bdf8', strokeWidth: 2 }
+    const cmStyle = { stroke: '#fbbf24', strokeWidth: 1.5, strokeDasharray: '6 3' }
+    const secStyle = { stroke: '#e879f9', strokeWidth: 1.5, strokeDasharray: '6 3' }
+    const cjStyle = { stroke: '#a78bfa', strokeWidth: 1.5 }
+
+    for (const ns of visibleNs) {
+      const nsPods = pods.filter((p) => p.namespace === ns.name)
+      const nsDeps = deployments.filter((d) => d.namespace === ns.name)
+      const nsRs = replicaSets.filter(
+        (r) =>
+          r.namespace === ns.name &&
+          (r.parentDeployment === null ||
+            !r.superseded ||
+            pods.some((p) => p.ownerId === r.id && p.phase !== 'Succeeded'))
+      )
+      const nsDs = daemonSets.filter((d) => d.namespace === ns.name)
+      const nsSts = statefulSets.filter((d) => d.namespace === ns.name)
+      const nsSvcs = services.filter((v) => v.namespace === ns.name)
+      const nsCms = configMaps.filter((c) => c.namespace === ns.name)
+      const nsSecs = secrets.filter((c) => c.namespace === ns.name)
+      const nsCjs = cronJobs.filter((c) => c.namespace === ns.name)
+      const nsJobs = jobs.filter((j) => j.namespace === ns.name)
+
+      // providers: services → configmaps → secrets
+      const prov = [
+        ...nsSvcs.map((v) => ({
+          selectionId: sid('service', v.id),
+          kind: 'service',
+          name: v.name,
+          sub: `${v.type} · ${v.clusterIP}`,
+          icon: Network as LucideIcon,
+          color: '#38bdf8',
+          dot: null as string | null,
+          dim: false,
+        })),
+        ...nsCms.map((c) => ({
+          selectionId: sid('configmap', c.id),
+          kind: 'configmap',
+          name: c.name,
+          sub: `${Object.keys(c.data).length} keys`,
+          icon: FileJson as LucideIcon,
+          color: '#fbbf24',
+          dot: null as string | null,
+          dim: false,
+        })),
+        ...nsSecs.map((c) => ({
+          selectionId: sid('secret', c.id),
+          kind: 'secret',
+          name: c.name,
+          sub: `${Object.keys(c.data).length} keys`,
+          icon: KeyRound as LucideIcon,
+          color: '#e879f9',
+          dot: null as string | null,
+          dim: false,
+        })),
+      ]
+
+      const ctrls = [
+        ...nsDeps.map((d) => ({
+          selectionId: sid('deployment', d.id),
+          kind: 'deployment',
+          name: d.name,
+          sub: `${d.replicas} replicas · ${d.image}`,
+          icon: Layers as LucideIcon,
+          color: '#34d399',
+          dot: null as string | null,
+          dim: false,
+        })),
+        ...nsDs.map((d) => ({
+          selectionId: sid('daemonset', d.id),
+          kind: 'daemonset',
+          name: d.name,
+          sub: `every node · ${d.image}`,
+          icon: Server as LucideIcon,
+          color: '#fb923c',
+          dot: null as string | null,
+          dim: false,
+        })),
+        ...nsSts.map((d) => ({
+          selectionId: sid('statefulset', d.id),
+          kind: 'statefulset',
+          name: d.name,
+          sub: `${d.replicas} replicas · ${d.image}`,
+          icon: Boxes as LucideIcon,
+          color: '#60a5fa',
+          dot: null as string | null,
+          dim: false,
+        })),
+        ...nsCjs.map((c) => ({
+          selectionId: sid('cronjob', c.id),
+          kind: 'cronjob',
+          name: c.name,
+          sub: `every ${c.schedule.replace('*/', '')}s · ${c.completions} done`,
+          icon: Clock as LucideIcon,
+          color: '#a78bfa',
+          dot: null as string | null,
+          dim: false,
+        })),
+      ]
+
+      const mids = [
+        ...nsRs.map((r) => ({
+          selectionId: sid('replicaset', r.id),
+          kind: 'replicaset',
+          name: r.name,
+          sub: r.superseded ? `superseded rev ${r.revision}` : `rev ${r.revision} · ${r.replicas} replicas`,
+          icon: Copy as LucideIcon,
+          color: '#2dd4bf',
+          dot: null as string | null,
+          dim: r.superseded,
+        })),
+        ...nsJobs.map((j) => ({
+          selectionId: sid('job', j.id),
+          kind: 'job',
+          name: j.name,
+          sub: j.status === 'Complete' ? 'complete' : 'running',
+          icon: Briefcase as LucideIcon,
+          color: '#22d3ee',
+          dot: j.status === 'Complete' ? '#2dd4bf' : '#38bdf8',
+          dim: j.status === 'Complete',
+        })),
+      ]
+
+      const podCards = nsPods.map((p) => {
+        const crashBadge = p.crashRate > 0 ? ` · crash ${Math.round(p.crashRate * 100)}%` : ''
+        return {
+          selectionId: sid('pod', p.id),
+          kind: 'pod',
+          name: p.name,
+          sub: `${p.phase}${p.restarts > 0 ? ` · ${p.restarts}R` : ''}${crashBadge}`,
+          icon: Package as LucideIcon,
+          color: '#a1a1aa',
+          dot: PHASE_DOT[p.phase] ?? '#a1a1aa',
+          dim: p.phase === 'Terminating' || p.phase === 'Succeeded',
+        }
+      })
+
+      totalRes += prov.length + ctrls.length + mids.length + podCards.length
+
+      const rows = Math.max(prov.length, ctrls.length, mids.length, podCards.length, 1)
+      const bandHeight = rows * (NH + VGAP) + 80
+
+      const addCol = (col: number, items: typeof prov) => {
+        items.forEach((d, i) => {
+          cards.push({
+            id: 't-' + d.selectionId.replace(':', '-'),
+            type: 'topoCard',
+            position: { x: col, y: cursorY + i * (NH + VGAP) },
+            data: d,
+            selectable: false,
+            draggable: false,
+          } as TopoCardNode)
+        })
+      }
+      addCol(COLX.providers, prov)
+      addCol(COLX.controllers, ctrls)
+      addCol(COLX.middle, mids)
+      addCol(COLX.pods, podCards)
+
+      // ---- edges
+      // deployment → ReplicaSet (owner chain)
+      for (const d of nsDeps) {
+        for (const r of replicaSets.filter((r) => r.parentDeployment === d.id)) {
+          edges.push({
+            id: `e-dep-${d.id}-rs-${r.id}`,
+            source: nid('deployment', d.id),
+            target: nid('replicaset', r.id),
+            style: r.superseded ? faded : ownStyle,
+          })
+        }
+      }
+      // ReplicaSet / DaemonSet / StatefulSet / Job → pod (owner)
+      const ownerEdges = (ownerId: string, ownerKind: string, style: { stroke: string; strokeWidth: number; strokeDasharray?: string }, fadedStyle = false) => {
+        for (const p of nsPods.filter((p) => p.ownerId === ownerId)) {
+          edges.push({
+            id: `e-${ownerKind}-${ownerId}-${p.id}`,
+            source: nid(ownerKind, ownerId),
+            target: nid('pod', p.id),
+            style: fadedStyle ? faded : style,
+          })
+        }
+      }
+      for (const r of nsRs) ownerEdges(r.id, 'replicaset', ownStyle, r.superseded)
+      for (const d of nsDs) ownerEdges(d.id, 'daemonset', ownStyle)
+      for (const d of nsSts) ownerEdges(d.id, 'statefulset', ownStyle)
+      for (const j of nsJobs) ownerEdges(j.id, 'job', ownStyle)
+      // cronjob → job
+      for (const c of nsCjs) {
+        for (const j of nsJobs.filter((j) => j.cronjobOwner === c.id)) {
+          edges.push({ id: `e-cj-${c.id}-${j.id}`, source: nid('cronjob', c.id), target: nid('job', j.id), style: cjStyle })
+        }
+      }
+      // service → pods (selector match — like real endpoints)
+      for (const v of nsSvcs) {
+        for (const p of nsPods) {
+          if (selectorMatches(v.selector as Labels, p.labels) && p.phase === 'Running') {
+            edges.push({
+              id: `e-svc-${v.id}-${p.id}`,
+              source: nid('service', v.id),
+              target: nid('pod', p.id),
+              style: svcStyle,
+              animated: running,
+            })
+          }
+        }
+      }
+      // configmap / secret → pod (env from)
+      for (const c of nsCms) {
+        for (const p of nsPods.filter((p) => p.envConfigMap === c.name)) {
+          edges.push({ id: `e-cm-${c.id}-${p.id}`, source: nid('configmap', c.id), target: nid('pod', p.id), style: cmStyle })
+        }
+      }
+      for (const c of nsSecs) {
+        for (const p of nsPods.filter((p) => p.envSecret === c.name)) {
+          edges.push({ id: `e-sec-${c.id}-${p.id}`, source: nid('secret', c.id), target: nid('pod', p.id), style: secStyle })
+        }
+      }
+
+      frames.push({
+        id: `t-frame-${ns.id}`,
+        type: 'nsFrame',
+        position: { x: -20, y: cursorY - 34 },
+        data: { ns: ns.name, count: prov.length + ctrls.length + mids.length + podCards.length, width: COLX.pods + NW + 50, height: bandHeight + 34 },
+        selectable: false,
+        draggable: false,
+        deletable: false,
+      } as NsFrameNode)
+
+      cursorY += bandHeight + 60
+    }
+
+    return { flowNodes: [...frames, ...cards], flowEdges: edges, total: totalRes }
+  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, namespaces, activeNamespace, running])
+
+  return (
+    <div className="relative h-full w-full bg-zinc-950">
+      <ReactFlow
+        nodes={flowNodes}
+        edges={flowEdges}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.15}
+        proOptions={{ hideAttribution: true }}
+        nodesConnectable={false}
+        className="bg-zinc-950"
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3f3f46" />
+        <Controls
+          className="!bg-zinc-900 !border-zinc-700 [&_button]:!bg-zinc-900 [&_button]:!border-zinc-700 [&_button]:!fill-zinc-400 hover:[&_button]:!bg-zinc-800"
+          showInteractive={false}
+        />
+      </ReactFlow>
+
+      {total === 0 && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/90 px-6 py-4 text-center">
+            <div className="text-sm font-medium text-zinc-300">no resources yet</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              switch to <span className="text-emerald-400">Infrastructure</span> view and drag resources onto the canvas —
+              their relationships appear here
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* legend */}
+      <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-zinc-800 bg-zinc-900/95 p-2.5 shadow-lg">
+        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Topology legend</div>
+        {[
+          { style: '#71717a', dash: false, label: 'owns (dep → RS → pod)' },
+          { style: '#38bdf8', dash: false, label: 'selects pods (service)' },
+          { style: '#fbbf24', dash: true, label: 'env from ConfigMap' },
+          { style: '#e879f9', dash: true, label: 'env from Secret' },
+          { style: '#a78bfa', dash: false, label: 'triggers (cronjob)' },
+        ].map((l) => (
+          <div key={l.label} className="flex items-center gap-2 py-0.5">
+            <span
+              className="h-0 w-6 shrink-0 border-t-2"
+              style={{ borderColor: l.style, borderTopStyle: l.dash ? 'dashed' : 'solid' }}
+            />
+            <span className="text-[10px] text-zinc-400">{l.label}</span>
+          </div>
+        ))}
+        <div className="mt-1.5 border-t border-zinc-800 pt-1.5 text-[10px] text-zinc-500">
+          click card = inspect · double-click = edit
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,1075 @@
+     1→'use client'
+     2→
+     3→import { create } from 'zustand'
+     4→
+     5→export type PodPhase =
+     6→  | 'Pending'
+     7→  | 'ContainerCreating'
+     8→  | 'Running'
+     9→  | 'CrashLoopBackOff'
+    10→  | 'Terminating'
+    11→  | 'Succeeded'
+    12→
+    13→export type Labels = Record<string, string>
+    14→
+    15→export type ResourceKind =
+    16→  | 'pod' | 'deployment' | 'replicaset' | 'daemonset' | 'statefulset'
+    17→  | 'service' | 'configmap' | 'secret' | 'cronjob' | 'job' | 'node' | 'namespace'
+    18→
+    19→export interface K8sNode {
+    20→  id: string
+    21→  name: string
+    22→  role: 'control-plane' | 'worker'
+    23→  cpuCapacity: number // millicores
+    24→  memCapacity: number // Mi
+    25→  position: { x: number; y: number }
+    26→}
+    27→
+    28→export interface Namespace {
+    29→  id: string
+    30→  name: string
+    31→  labels: Labels
+    32→}
+    33→
+    34→export interface Pod {
+    35→  id: string
+    36→  name: string
+    37→  namespace: string
+    38→  labels: Labels
+    39→  ownerId: string | null // rs/ds/sts/job id
+    40→  ownerKind: 'replicaset' | 'daemonset' | 'statefulset' | 'job' | 'deployment' | 'none'
+    41→  phase: PodPhase
+    42→  image: string
+    43→  cpuRequest: number
+    44→  memRequest: number
+    45→  restarts: number
+    46→  crashRate: number
+    47→  phaseTicks: number
+    48→  ageTicks: number
+    49→  requiredNode: string | null // daemonset pods pin to a node
+    50→  completionTicks: number | null // job pods: ticks until Succeeded
+    51→  envConfigMap: string | null
+    52→  envSecret: string | null
+    53→  ports: number[]
+    54→  logs: string[]
+    55→  nodeId: string | null
+    56→}
+    57→
+    58→export interface ReplicaSet {
+    59→  id: string
+    60→  name: string
+    61→  namespace: string
+    62→  labels: Labels
+    63→  selector: Labels
+    64→  replicas: number
+    65→  image: string
+    66→  cpuRequest: number
+    67→  memRequest: number
+    68→  crashRate: number
+    69→  revision: number
+    70→  parentDeployment: string | null
+    71→  superseded: boolean
+    72→}
+    73→
+    74→export interface Deployment {
+    75→  id: string
+    76→  name: string
+    77→  namespace: string
+    78→  labels: Labels
+    79→  selector: Labels
+    80→  replicas: number
+    81→  image: string
+    82→  cpuRequest: number
+    83→  memRequest: number
+    84→  crashRate: number
+    85→  revision: number
+    86→}
+    87→
+    88→export interface DaemonSet {
+    89→  id: string
+    90→  name: string
+    91→  namespace: string
+    92→  labels: Labels
+    93→  selector: Labels
+    94→  image: string
+    95→  cpuRequest: number
+    96→  memRequest: number
+    97→  crashRate: number
+    98→}
+    99→
+   100→export interface StatefulSet {
+   101→  id: string
+   102→  name: string
+   103→  namespace: string
+   104→  labels: Labels
+   105→  serviceName: string
+   106→  replicas: number
+   107→  image: string
+   108→  cpuRequest: number
+   109→  memRequest: number
+   110→  crashRate: number
+   111→}
+   112→
+   113→export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer'
+   114→
+   115→export interface Service {
+   116→  id: string
+   117→  name: string
+   118→  namespace: string
+   119→  type: ServiceType
+   120→  selector: Labels
+   121→  port: number
+   122→  targetPort: number
+   123→  protocol: 'TCP' | 'UDP'
+   124→  clusterIP: string
+   125→  nodePort: number | null
+   126→  externalIP: string | null
+   127→  lbTicks: number // countdown until LB ip assigned
+   128→}
+   129→
+   130→export interface ConfigMap {
+   131→  id: string
+   132→  name: string
+   133→  namespace: string
+   134→  data: Record<string, string>
+   135→}
+   136→
+   137→export interface Secret {
+   138→  id: string
+   139→  name: string
+   140→  namespace: string
+   141→  data: Record<string, string>
+   142→}
+   143→
+   144→export interface CronJob {
+   145→  id: string
+   146→  name: string
+   147→  namespace: string
+   148→  schedule: string // simplified: "*/N" every N sim-seconds, "* * * * *" = 60s
+   149→  image: string
+   150→  cpuRequest: number
+   151→  memRequest: number
+   152→  duration: number // job pod runtime in ticks
+   153→  lastRun: number
+   154→  active: number
+   155→  completions: number
+   156→}
+   157→
+   158→export interface Job {
+   159→  id: string
+   160→  name: string
+   161→  namespace: string
+   162→  image: string
+   163→  duration: number
+   164→  status: 'Active' | 'Complete'
+   165→  cronjobOwner: string | null
+   166→  createdTick: number
+   167→}
+   168→
+   169→export interface K8sEvent {
+   170→  id: string
+   171→  time: string
+   172→  type: 'Normal' | 'Warning'
+   173→  reason: string
+   174→  message: string
+   175→  object: string
+   176→}
+   177→
+   178→export type SelectionId = string | null // 'kind:id'
+   179→
+   180→const rand = (n: number) => Math.random().toString(36).slice(2, 2 + n)
+   181→const simTime = (t: number) => `00:${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+   182→
+   183→let nextId = 1
+   184→const uid = (p: string) => `${p}-${nextId++}`
+   185→
+   186→export function selectorMatches(selector: Labels, labels: Labels): boolean {
+   187→  return Object.entries(selector).every(([k, v]) => labels[k] === v)
+   188→}
+   189→
+   190→export function parseSchedule(schedule: string): number {
+   191→  const m = schedule.match(/^\*\/(\d+)/)
+   192→  if (m) return Math.max(1, Number(m[1]))
+   193→  if (schedule.trim() === '* * * * *') return 60
+   194→  const plain = schedule.match(/^(\d+)$/)
+   195→  if (plain) return Math.max(1, Number(plain[1]))
+   196→  return 0 // unsupported
+   197→}
+   198→
+   199→// PodN kept as alias for readability
+   200→export type PodN = Pod
+   201→
+   202→export interface ClusterState {
+   203→  nodes: K8sNode[]
+   204→  pods: Pod[]
+   205→  deployments: Deployment[]
+   206→  replicaSets: ReplicaSet[]
+   207→  daemonSets: DaemonSet[]
+   208→  statefulSets: StatefulSet[]
+   209→  services: Service[]
+   210→  configMaps: ConfigMap[]
+   211→  secrets: Secret[]
+   212→  cronJobs: CronJob[]
+   213→  jobs: Job[]
+   214→  namespaces: Namespace[]
+   215→  activeNamespace: string // 'all' or a namespace name
+   216→  internalsNode: SelectionId // node whose internals dialog is open
+   217→  events: K8sEvent[]
+   218→  tickCount: number
+   219→  running: boolean
+   220→  speed: number
+   221→  chaos: boolean
+   222→  selected: SelectionId
+   223→  editing: SelectionId // resource being edited in dialog
+   224→
+   225→  tick: () => void
+   226→  setRunning: (v: boolean) => void
+   227→  setSpeed: (v: number) => void
+   228→  setChaos: (v: boolean) => void
+   229→  select: (id: SelectionId) => void
+   230→  setEditing: (id: SelectionId) => void
+   231→  setNamespace: (ns: string) => void
+   232→  setInternalsNode: (id: SelectionId) => void
+   233→
+   234→  addNode: () => void
+   235→  removeNode: (id: string) => void
+   236→  moveNode: (id: string, position: { x: number; y: number }) => void
+   237→
+   238→  // creation from palette drop
+   239→  createResource: (payload: DropPayload) => void
+   240→
+   241→  // updates (edit dialog)
+   242→  updateResource: (kind: ResourceKind, id: string, patch: Record<string, unknown>) => void
+   243→  removeResource: (kind: ResourceKind, id: string) => void
+   244→
+   245→  // pod actions
+   246→  crashPod: (id: string) => void
+   247→  restartPod: (id: string) => void
+   248→
+   249→  // scaling shortcuts
+   250→  scaleDeployment: (id: string, replicas: number) => void
+   251→  scaleReplicaSet: (id: string, replicas: number) => void
+   252→  scaleStatefulSet: (id: string, replicas: number) => void
+   253→
+   254→  reset: () => void
+   255→}
+   256→
+   257→export interface DropPayload {
+   258→  kind: ResourceKind
+   259→  [k: string]: unknown
+   260→}
+   261→
+   262→function logEvent(state: Pick<ClusterState, 'events' | 'tickCount'>, type: 'Normal' | 'Warning', reason: string, message: string, object: string) {
+   263→  state.events.unshift({ id: uid('ev'), time: simTime(state.tickCount), type, reason, message, object })
+   264→  if (state.events.length > 100) state.events.length = 100
+   265→}
+   266→
+   267→function podLog(pod: Pod, tick: number, line: string) {
+   268→  pod.logs.push(`[${simTime(tick)}] ${line}`)
+   269→  if (pod.logs.length > 30) pod.logs.splice(0, pod.logs.length - 30)
+   270→}
+   271→
+   272→export function nodeUsage(pods: Pod[], nodeId: string) {
+   273→  return pods
+   274→    .filter((p) => p.requiredNode === nodeId || (p.requiredNode === null && p.nodeId === nodeId))
+   275→    .filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   276→    .reduce(
+   277→      (acc, p) => {
+   278→        acc.cpu += p.cpuRequest
+   279→        acc.mem += p.memRequest
+   280→        return acc
+   281→      },
+   282→      { cpu: 0, mem: 0 }
+   283→    )
+   284→}
+   285→
+   286→
+   287→function basePod(over: Partial<Pod>): Pod {
+   288→  return {
+   289→    id: uid('pod'),
+   290→    name: 'pod',
+   291→    namespace: 'default',
+   292→    labels: { app: 'x' },
+   293→    nodeId: null,
+   294→    ownerId: null,
+   295→    ownerKind: 'none',
+   296→    phase: 'Pending',
+   297→    image: 'nginx:latest',
+   298→    cpuRequest: 500,
+   299→    memRequest: 512,
+   300→    restarts: 0,
+   301→    crashRate: 0,
+   302→    phaseTicks: 0,
+   303→    ageTicks: 0,
+   304→    requiredNode: null,
+   305→    completionTicks: null,
+   306→    envConfigMap: null,
+   307→    envSecret: null,
+   308→    ports: [],
+   309→    logs: [],
+   310→    ...over,
+   311→  }
+   312→}
+   313→
+   314→
+   315→export const useCluster = create<ClusterState>((set, get) => ({
+   316→  nodes: [
+   317→    { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
+   318→    { id: 'n1', name: 'worker-node-1', role: 'worker', cpuCapacity: 4000, memCapacity: 8192, position: { x: 0, y: 180 } },
+   319→    { id: 'n2', name: 'worker-node-2', role: 'worker', cpuCapacity: 4000, memCapacity: 8192, position: { x: 600, y: 180 } },
+   320→  ],
+   321→  pods: [],
+   322→  deployments: [],
+   323→  replicaSets: [],
+   324→  daemonSets: [],
+   325→  statefulSets: [],
+   326→  services: [],
+   327→  configMaps: [],
+   328→  secrets: [],
+   329→  cronJobs: [],
+   330→  jobs: [],
+   331→  namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
+   332→  activeNamespace: 'all',
+   333→  internalsNode: null,
+   334→  events: [],
+   335→  tickCount: 0,
+   336→  running: true,
+   337→  speed: 1,
+   338→  chaos: false,
+   339→  selected: null,
+   340→  editing: null,
+   341→
+   342→  tick: () =>
+   343→    set((state) => {
+   344→      const s: ClusterState = {
+   345→        ...state,
+   346→        nodes: state.nodes.map((n) => ({ ...n })),
+   347→        pods: state.pods.map((p) => ({ ...p })),
+   348→        deployments: state.deployments.map((d) => ({ ...d })),
+   349→        replicaSets: state.replicaSets.map((r) => ({ ...r })),
+   350→        daemonSets: state.daemonSets.map((d) => ({ ...d })),
+   351→        statefulSets: state.statefulSets.map((d) => ({ ...d })),
+   352→        services: state.services.map((d) => ({ ...d })),
+   353→        configMaps: state.configMaps.map((d) => ({ ...d })),
+   354→        secrets: state.secrets.map((d) => ({ ...d })),
+   355→        cronJobs: state.cronJobs.map((d) => ({ ...d })),
+   356→        jobs: state.jobs.map((d) => ({ ...d })),
+   357→        events: [...state.events],
+   358→      }
+   359→      s.tickCount = state.tickCount + 1
+   360→      const t = s.tickCount
+   361→      const workers = () => s.nodes.filter((n) => n.role === 'worker')
+   362→
+   363→      const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
+   364→      const activeOf = (oid: string) => ownedBy(oid).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   365→
+   366→      // ---- bind pods that already have a node (DS requiredNode / manual placement) ----
+   367→      for (const pod of s.pods) {
+   368→        if (pod.phase === 'Pending' && (pod.nodeId || pod.requiredNode)) {
+   369→          const target = pod.nodeId ?? pod.requiredNode
+   370→          pod.nodeId = target
+   371→          pod.phase = 'ContainerCreating'
+   372→          pod.phaseTicks = 0
+   373→          const host = s.nodes.find((n) => n.id === target)
+   374→          logEvent(s, 'Normal', 'Scheduled', `${pod.name} assigned to ${host?.name ?? target}`, pod.name)
+   375→          podLog(pod, t, `Assigned to ${host?.name ?? target}`)
+   376→        }
+   377→      }
+   378→
+   379→      // ---- scheduler for unbound Pending pods ----
+   380→      for (const pod of s.pods) {
+   381→        if (pod.phase !== 'Pending' || pod.nodeId) continue
+   382→        const cands = workers().filter((n) => {
+   383→          const u = nodeUsage(s.pods, n.id)
+   384→          return u.cpu + pod.cpuRequest <= n.cpuCapacity && u.mem + pod.memRequest <= n.memCapacity
+   385→        })
+   386→        if (cands.length > 0) {
+   387→          cands.sort((a, b) => {
+   388→            const ua = nodeUsage(s.pods, a.id)
+   389→            const ub = nodeUsage(s.pods, b.id)
+   390→            return ua.cpu / a.cpuCapacity - ub.cpu / b.cpuCapacity
+   391→          })
+   392→          pod.nodeId = cands[0].id
+   393→          pod.phase = 'ContainerCreating'
+   394→          pod.phaseTicks = 0
+   395→          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${cands[0].name}`, pod.name)
+   396→          podLog(pod, t, `Assigned to ${cands[0].name}`)
+   397→        } else if (t % 4 === 0) {
+   398→          logEvent(s, 'Warning', 'FailedScheduling', `0/${workers().length} nodes are available: insufficient cpu/mem for ${pod.name}`, pod.name)
+   399→        }
+   400→      }
+   401→
+   402→      // ---- pod lifecycle ----
+   403→      for (const pod of s.pods) {
+   404→        pod.ageTicks += 1
+   405→        pod.phaseTicks += 1
+   406→        switch (pod.phase) {
+   407→          case 'ContainerCreating':
+   408→            if (pod.phaseTicks >= 3) {
+   409→              pod.phase = 'Running'
+   410→              pod.phaseTicks = 0
+   411→              logEvent(s, 'Normal', 'Started', `Started container ${pod.image} in pod ${pod.name}`, pod.name)
+   412→              podLog(pod, t, `Container started: ${pod.image}`)
+   413→            }
+   414→            break
+   415→          case 'Running':
+   416→            if (pod.completionTicks !== null) {
+   417→              pod.completionTicks -= 1
+   418→              if (pod.completionTicks <= 0) {
+   419→                pod.phase = 'Succeeded'
+   420→                pod.phaseTicks = 0
+   421→                logEvent(s, 'Normal', 'Completed', `Pod ${pod.name} completed (job)`, pod.name)
+   422→                podLog(pod, t, 'Job completed successfully')
+   423→              }
+   424→            } else if (Math.random() < pod.crashRate) {
+   425→              pod.phase = 'CrashLoopBackOff'
+   426→              pod.phaseTicks = 0
+   427→              pod.restarts += 1
+   428→              logEvent(s, 'Warning', 'BackOff', `Back-off restarting failed container in ${pod.name} (restart #${pod.restarts})`, pod.name)
+   429→              podLog(pod, t, 'ERROR: container exited (code 137)')
+   430→            }
+   431→            break
+   432→          case 'CrashLoopBackOff': {
+   433→            const backoff = Math.min(2 ** Math.min(pod.restarts, 4), 16)
+   434→            if (pod.phaseTicks >= backoff) {
+   435→              pod.phase = 'ContainerCreating'
+   436→              pod.phaseTicks = 0
+   437→              logEvent(s, 'Normal', 'Pulling', `Restarting container ${pod.image} in ${pod.name}`, pod.name)
+   438→            }
+   439→            break
+   440→          }
+   441→          case 'Terminating':
+   442→            if (pod.phaseTicks >= 2) {
+   443→              // pod will be cleaned up below
+   444→            }
+   445→            break
+   446→          default:
+   447→            break
+   448→        }
+   449→      }
+   450→
+   451→      // ---- cleanup finished pods ----
+   452→      s.pods = s.pods.filter((p) => {
+   453→        if (p.phase === 'Terminating' && p.phaseTicks >= 2) return false
+   454→        if (p.phase === 'Succeeded' && p.phaseTicks >= 4) return false
+   455→        return true
+   456→      })
+   457→
+   458→      // ---- deployment controller ----
+   459→      for (const dep of s.deployments) {
+   460→        // ensure active RS with desired spec
+   461→        const active = s.replicaSets.filter((r) => r.parentDeployment === dep.id && !r.superseded)
+   462→        const matchesSpec = active.length > 0 && active[0].image === dep.image && active[0].replicas === dep.replicas
+   463→        if (!matchesSpec && active.length > 0) {
+   464→          // rollout: supersede old RS
+   465→          for (const old of active) old.superseded = true
+   466→          const rs: ReplicaSet = {
+   467→            id: uid('rs'),
+   468→            name: `${dep.name}-${rand(6)}`,
+   469→            labels: { ...dep.labels },
+   470→            selector: { ...dep.selector },
+   471→            replicas: dep.replicas,
+   472→            image: dep.image,
+   473→            cpuRequest: dep.cpuRequest,
+   474→            memRequest: dep.memRequest,
+   475→            crashRate: dep.crashRate,
+   476→            revision: dep.revision,
+   477→            parentDeployment: dep.id,
+   478→            superseded: false,
+   479→          }
+   480→          s.replicaSets.push(rs)
+   481→          logEvent(s, 'Normal', 'RolloutStarted', `Deployment ${dep.name} rolling out revision ${dep.revision} (${dep.image})`, dep.name)
+   482→        } else if (active.length === 0) {
+   483→          const rs: ReplicaSet = {
+   484→            id: uid('rs'),
+   485→            name: `${dep.name}-${rand(6)}`,
+   486→            labels: { ...dep.labels },
+   487→            selector: { ...dep.selector },
+   488→            replicas: dep.replicas,
+   489→            image: dep.image,
+   490→            cpuRequest: dep.cpuRequest,
+   491→            memRequest: dep.memRequest,
+   492→            crashRate: dep.crashRate,
+   493→            revision: dep.revision,
+   494→            parentDeployment: dep.id,
+   495→            superseded: false,
+   496→          }
+   497→          s.replicaSets.push(rs)
+   498→          logEvent(s, 'Normal', 'SuccessfulCreate', `Created ReplicaSet ${rs.name} with ${rs.replicas} replica(s)`, dep.name)
+   499→        }
+   500→
+   501→        // superseded RS scale-down: one pod at a time when new RS has capacity to schedule
+   502→        const newest = s.replicaSets.find((r) => r.parentDeployment === dep.id && !r.superseded)
+   503→        if (newest) {
+   504→          for (const old of s.replicaSets) {
+   505→            if (!old.superseded || old.parentDeployment !== dep.id) continue
+   506→            const oldPods = ownedBy(old.id).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   507→            const newPods = activeOf(newest.id)
+   508→            // scale down one old pod per tick once new pods are up (rolling)
+   509→            if (oldPods.length > 0 && newPods.filter((p) => p.phase === 'Running').length >= 1) {
+   510→              const victim = oldPods[0]
+   511→              victim.phase = 'Terminating'
+   512→              victim.phaseTicks = 0
+   513→              logEvent(s, 'Normal', 'Killing', `Stopping container ${victim.image} in pod ${victim.name} (rollout)`, dep.name)
+   514→              old.replicas = Math.max(0, old.replicas - 1)
+   515→            } else if (oldPods.length === 0 && old.replicas > 0) {
+   516→              old.replicas = 0
+   517→            }
+   518→          }
+   519→        }
+   520→      }
+   521→
+   522→      // ---- replicaset controller ----
+   523→      for (const rs of s.replicaSets) {
+   524→        const pods = ownedBy(rs.id).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   525→        if (pods.length < rs.replicas) {
+   526→          const need = rs.replicas - pods.length
+   527→          for (let i = 0; i < need; i++) {
+   528→            s.pods.push(
+   529→              basePod({
+   530→                name: `${rs.name}-${rand(5)}-${rand(5)}`,
+   531→                namespace: rs.namespace,
+   532→                labels: { ...rs.labels, pod: rand(4) },
+   533→                ownerId: rs.id,
+   534→                ownerKind: 'replicaset',
+   535→                image: rs.image,
+   536→                cpuRequest: rs.cpuRequest,
+   537→                memRequest: rs.memRequest,
+   538→                crashRate: rs.crashRate,
+   539→              }) as never
+   540→            )
+   541→            logEvent(s, 'Normal', 'SuccessfulCreate', `Created pod for ReplicaSet ${rs.name}`, rs.name)
+   542→          }
+   543→        } else if (pods.length > rs.replicas) {
+   544→          for (const victim of pods.slice(rs.replicas)) {
+   545→            victim.phase = 'Terminating'
+   546→            victim.phaseTicks = 0
+   547→            logEvent(s, 'Normal', 'Killing', `Stopping container ${victim.image} in pod ${victim.name}`, rs.name)
+   548→          }
+   549→        }
+   550→      }
+   551→
+   552→      // ---- daemonset controller ----
+   553→      for (const ds of s.daemonSets) {
+   554→        for (const n of workers()) {
+   555→          const existing = s.pods.filter((p) => p.ownerId === ds.id && p.requiredNode === n.id && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   556→          if (existing.length === 0) {
+   557→            s.pods.push(
+   558→              basePod({
+   559→                name: `${ds.name}-${rand(5)}-${rand(5)}`,
+   560→                namespace: ds.namespace,
+   561→                labels: { ...ds.labels, pod: rand(4) },
+   562→                ownerId: ds.id,
+   563→                ownerKind: 'daemonset',
+   564→                image: ds.image,
+   565→                cpuRequest: ds.cpuRequest,
+   566→                memRequest: ds.memRequest,
+   567→                crashRate: ds.crashRate,
+   568→                requiredNode: n.id,
+   569→              }) as never
+   570→            )
+   571→            logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${ds.name} started pod on ${n.name}`, ds.name)
+   572→          }
+   573→        }
+   574→      }
+   575→
+   576→      // ---- statefulset controller (ordered) ----
+   577→      for (const sts of s.statefulSets) {
+   578→        for (let i = 0; i < sts.replicas; i++) {
+   579→          const name = `${sts.name}-${i}`
+   580→          const existing = s.pods.find((p) => p.name === name && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   581→          if (!existing) {
+   582→            // wait until all lower ordinals are Running
+   583→            const lower: number[] = []
+   584→            for (let j = 0; j < i; j++) {
+   585→              const lp = s.pods.find((p) => p.name === `${sts.name}-${j}`)
+   586→              if (!lp || lp.phase !== 'Running') lower.push(j)
+   587→            }
+   588→            if (lower.length > 0) continue
+   589→            s.pods.push(
+   590→              basePod({
+   591→                name,
+   592→                namespace: sts.namespace,
+   593→                labels: { ...sts.labels, 'apps.kubernetes.io/pod-index': String(i), pod: name },
+   594→                ownerId: sts.id,
+   595→                ownerKind: 'statefulset',
+   596→                image: sts.image,
+   597→                cpuRequest: sts.cpuRequest,
+   598→                memRequest: sts.memRequest,
+   599→                crashRate: sts.crashRate,
+   600→              }) as never
+   601→            )
+   602→            logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${sts.name} created ${name} (ordinal ${i})`, sts.name)
+   603→          }
+   604→        }
+   605→        // scale down: remove highest ordinal
+   606→        const pods = s.pods.filter((p) => p.ownerId === sts.id && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
+   607→        if (pods.length > sts.replicas) {
+   608→          const sorted = pods.sort((a, b) => (parseInt(a.name.split('-').pop() ?? '0') - parseInt(b.name.split('-').pop() ?? '0')))
+   609→          const victim = sorted[sorted.length - 1]
+   610→          victim.phase = 'Terminating'
+   611→          victim.phaseTicks = 0
+   612→          logEvent(s, 'Normal', 'Killing', `StatefulSet scaling down: stopping ${victim.name}`, sts.name)
+   613→        }
+   614→      }
+   615→
+   616→      // ---- cronjob controller ----
+   617→      for (const cj of s.cronJobs) {
+   618→        const interval = parseSchedule(cj.schedule)
+   619→        if (interval <= 0) continue
+   620→        if (t - cj.lastRun >= interval) {
+   621→          cj.lastRun = t
+   622→          const job: Job = {
+   623→            id: uid('job'),
+   624→            name: `${cj.name}-${t}`,
+   625→            namespace: cj.namespace,
+   626→            image: cj.image,
+   627→            duration: cj.duration,
+   628→            status: 'Active',
+   629→            cronjobOwner: cj.id,
+   630→            createdTick: t,
+   631→          }
+   632→          s.jobs.push(job)
+   633→          s.pods.push(
+   634→            basePod({
+   635→              name: `${job.name}-${rand(5)}`,
+   636→              namespace: cj.namespace,
+   637→              labels: { 'k8s kind': 'job', job: job.name },
+   638→              ownerId: job.id,
+   639→              ownerKind: 'job',
+   640→              image: cj.image,
+   641→              cpuRequest: cj.cpuRequest,
+   642→              memRequest: cj.memRequest,
+   643→              crashRate: 0,
+   644→              completionTicks: cj.duration,
+   645→            }) as never
+   646→          )
+   647→          cj.active += 1
+   648→          logEvent(s, 'Normal', 'SuccessfulCreate', `CronJob ${cj.name} spawned Job ${job.name}`, cj.name)
+   649→        }
+   650→      }
+   651→
+   652→      // ---- job status tracking ----
+   653→      for (const job of s.jobs) {
+   654→        if (job.status === 'Active') {
+   655→          const pods = s.pods.filter((p) => p.ownerId === job.id)
+   656→          const done = pods.length > 0 && pods.every((p) => p.phase === 'Succeeded') && pods.some((p) => p.phaseTicks >= 1)
+   657→          if (done) {
+   658→            job.status = 'Complete'
+   659→            if (job.cronjobOwner) {
+   660→              const cj = s.cronJobs.find((c) => c.id === job.cronjobOwner)
+   661→              if (cj) {
+   662→                cj.active -= 1
+   663→                cj.completions += 1
+   664→              }
+   665→            }
+   666→            logEvent(s, 'Normal', 'Completed', `Job ${job.name} completed`, job.name)
+   667→          } else if (t - job.createdTick > 600) {
+   668→            job.status = 'Complete' // safety
+   669→          }
+   670→        }
+   671→      }
+   672→      // GC completed jobs older than 30 ticks
+   673→      s.jobs = s.jobs.filter((j) => !(j.status === 'Complete' && t - j.createdTick > 30))
+   674→
+   675→      // ---- service LB ip assignment ----
+   676→      for (const svc of s.services) {
+   677→        if (svc.type === 'LoadBalancer' && !svc.externalIP && svc.lbTicks > 0) {
+   678→          svc.lbTicks -= 1
+   679→          if (svc.lbTicks === 0) {
+   680→            svc.externalIP = `203.0.113.${10 + (s.services.length % 240)}`
+   681→            logEvent(s, 'Normal', 'Assigned', `LoadBalancer ${svc.name} got external IP ${svc.externalIP}`, svc.name)
+   682→          }
+   683→        }
+   684→      }
+   685→
+   686→      // ---- chaos monkey ----
+   687→      if (s.chaos && t % 3 === 0) {
+   688→        const alive = s.pods.filter((p) => p.phase === 'Running')
+   689→        if (alive.length > 0 && Math.random() < 0.5) {
+   690→          const victim = alive[Math.floor(Math.random() * alive.length)]
+   691→          victim.phase = 'CrashLoopBackOff'
+   692→          victim.phaseTicks = 0
+   693→          victim.restarts += 1
+   694→          logEvent(s, 'Warning', 'ChaosMonkey', `Random failure injected in pod ${victim.name} 🐒`, victim.name)
+   695→        }
+   696→      }
+   697→
+   698→      return s
+   699→    }),
+   700→
+   701→  setRunning: (v) => set({ running: v }),
+   702→  setSpeed: (v) => set({ speed: v }),
+   703→  setChaos: (v) => set({ chaos: v }),
+   704→  select: (id) => set({ selected: id }),
+   705→  setEditing: (id) => set({ editing: id }),
+   706→  setNamespace: (ns) => set({ activeNamespace: ns }),
+   707→  setInternalsNode: (id) => set({ internalsNode: id }),
+   708→
+   709→  addNode: () =>
+   710→    set((state) => {
+   711→      const workers = state.nodes.filter((n) => n.role === 'worker')
+   712→      const node: K8sNode = {
+   713→        id: uid('node'),
+   714→        name: `worker-node-${workers.length + 1}`,
+   715→        role: 'worker',
+   716→        cpuCapacity: 4000,
+   717→        memCapacity: 8192,
+   718→        position: { x: (workers.length % 3) * 600, y: 180 + Math.floor(workers.length / 3) * 240 },
+   719→      }
+   720→      const events = [...state.events]
+   721→      const s = { ...state, nodes: [...state.nodes, node], events } as ClusterState
+   722→      logEvent(s, 'Normal', 'NodeAdded', `Node ${node.name} joined the cluster — DaemonSets will schedule on it`, node.name)
+   723→      return s
+   724→    }),
+   725→
+   726→  removeNode: (id) =>
+   727→    set((state) => {
+   728→      const node = state.nodes.find((n) => n.id === id)
+   729→      if (!node || node.role === 'control-plane') return state
+   730→      const s = { ...state, nodes: state.nodes.filter((n) => n.id !== id), pods: state.pods.filter((p) => p.nodeId !== id && p.requiredNode !== id), events: [...state.events], selected: state.selected?.startsWith(`node:${id}`) ? null : state.selected } as ClusterState
+   731→      logEvent(s, 'Warning', 'NodeDeleted', `Node ${node.name} removed — evicted pods will be rescheduled by controllers`, node.name)
+   732→      return s
+   733→    }),
+   734→
+   735→  moveNode: (id, position) =>
+   736→    set((state) => ({ nodes: state.nodes.map((n) => (n.id === id ? { ...n, position } : n)) })),
+   737→
+   738→  createResource: (payload) =>
+   739→    set((state) => {
+   740→      const s = { ...state, events: [...state.events] } as ClusterState
+   741→      const kind = payload.kind
+   742→      const name = (payload.name as string) ?? 'res'
+   743→      switch (kind) {
+   744→        case 'pod':
+   745→          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }) as never]
+   746→          logEvent(s, 'Normal', 'Created', `Pod created: ${name} (ns/${(payload.namespace as string) ?? 'default'})`, name)
+   747→          break
+   748→        case 'deployment':
+   749→          s.deployments = [...state.deployments, { id: uid('dep'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1 }]
+   750→          logEvent(s, 'Normal', 'ScalingReplicaSet', `Deployment ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
+   751→          break
+   752→        case 'replicaset':
+   753→          s.replicaSets = [...state.replicaSets, { id: uid('rs'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 2, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1, parentDeployment: null, superseded: false }]
+   754→          logEvent(s, 'Normal', 'SuccessfulCreate', `ReplicaSet ${name} created with ${payload.replicas ?? 2} replica(s)`, name)
+   755→          break
+   756→        case 'daemonset':
+   757→          s.daemonSets = [...state.daemonSets, { id: uid('ds'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, image: (payload.image as string) ?? 'fluentd:latest', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: (payload.crashRate as number) ?? 0 }]
+   758→          logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${name} created — one pod per node`, name)
+   759→          break
+   760→        case 'statefulset':
+   761→          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }]
+   762→          logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
+   763→          break
+   764→        case 'service': {
+   765→          const type = (payload.serviceType as ServiceType) ?? 'ClusterIP'
+   766→          const svc: Service = { id: uid('svc'), name, namespace: (payload.namespace as string) ?? 'default', type, selector: (payload.selector as Labels) ?? { app: name }, port: (payload.port as number) ?? 80, targetPort: (payload.targetPort as number) ?? 8080, protocol: 'TCP', clusterIP: `10.96.${rand2(1, 200)}.${rand2(2, 250)}`, nodePort: type === 'ClusterIP' ? null : rand2(30000, 32767), externalIP: null, lbTicks: type === 'LoadBalancer' ? 5 : 0 }
+   767→          s.services = [...state.services, svc]
+   768→          logEvent(s, 'Normal', 'Created', `Service ${name} (${type}) created — clusterIP ${svc.clusterIP}${svc.nodePort ? `, nodePort ${svc.nodePort}` : ''}`, name)
+   769→          break
+   770→        }
+   771→        case 'configmap':
+   772→          s.configMaps = [...state.configMaps, { id: uid('cm'), name, namespace: (payload.namespace as string) ?? 'default', data: (payload.data as Record<string, string>) ?? { 'config.yaml': 'key: value' } }]
+   773→          logEvent(s, 'Normal', 'Created', `ConfigMap ${name} created (ns/${(payload.namespace as string) ?? 'default'})`, name)
+   774→          break
+   775→        case 'secret':
+   776→          s.secrets = [...state.secrets, { id: uid('sec'), name, namespace: (payload.namespace as string) ?? 'default', data: (payload.data as Record<string, string>) ?? { username: 'admin' } }]
+   777→          logEvent(s, 'Normal', 'Created', `Secret ${name} created (ns/${(payload.namespace as string) ?? 'default'})`, name)
+   778→          break
+   779→        case 'cronjob':
+   780→          s.cronJobs = [...state.cronJobs, { id: uid('cj'), name, namespace: (payload.namespace as string) ?? 'default', schedule: (payload.schedule as string) ?? '*/10', image: (payload.image as string) ?? 'busybox:1.36', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, duration: (payload.duration as number) ?? 5, lastRun: state.tickCount, active: 0, completions: 0 }]
+   781→          logEvent(s, 'Normal', 'Created', `CronJob ${name} created (schedule ${(payload.schedule as string) ?? '*/10'}s)`, name)
+   782→          break
+   783→        case 'job': {
+   784→          const job: Job = { id: uid('job'), name, namespace: (payload.namespace as string) ?? 'default', image: (payload.image as string) ?? 'busybox:1.36', duration: (payload.duration as number) ?? 6, status: 'Active', cronjobOwner: null, createdTick: state.tickCount }
+   785→          s.jobs = [...state.jobs, job]
+   786→          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: { job: name }, ownerId: job.id, ownerKind: 'job', image: job.image, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: 0, completionTicks: job.duration }) as never]
+   787→          logEvent(s, 'Normal', 'Created', `Job ${name} created — runs for ${job.duration}s sim-time`, name)
+   788→          break
+   789→        }
+   790→        case 'namespace': {
+   791→          const nsName = (payload.name as string) ?? `ns-${rand(4)}`
+   792→          if (state.namespaces.some((n) => n.name === nsName)) {
+   793→            logEvent(s, 'Warning', 'AlreadyExists', `Namespace "${nsName}" already exists`, nsName)
+   794→            break
+   795→          }
+   796→          s.namespaces = [...state.namespaces, { id: uid('ns'), name: nsName, labels: (payload.labels as Labels) ?? {} }]
+   797→          logEvent(s, 'Normal', 'Created', `Namespace ${nsName} created — resources can now be isolated in it`, nsName)
+   798→          break
+   799→        }
+   800→        default:
+   801→          break
+   802→      }
+   803→      return s
+   804→    }),
+   805→
+   806→  updateResource: (kind, id, patch) =>
+   807→    set((state) => {
+   808→      const s = { ...state, events: [...state.events] } as ClusterState
+   809→      const name = (patch.name as string) ?? ''
+   810→      switch (kind) {
+   811→        case 'deployment': {
+   812→          const dep = state.deployments.find((d) => d.id === id)
+   813→          if (!dep) return state
+   814→          const next = { ...dep, ...patch, labels: (patch.labels as Labels) ?? dep.labels, selector: (patch.selector as Labels) ?? dep.selector } as Deployment
+   815→          const specChanged = next.image !== dep.image || next.cpuRequest !== dep.cpuRequest || next.memRequest !== dep.memRequest
+   816→          if (specChanged) next.revision = dep.revision + 1
+   817→          s.deployments = state.deployments.map((d) => (d.id === id ? next : d))
+   818→          logEvent(s, 'Normal', specChanged ? 'RolloutStarted' : 'ScalingReplicaSet', specChanged ? `Deployment ${next.name}: image → ${next.image}, rolling out revision ${next.revision}` : `Deployment ${next.name} scaled to ${next.replicas}`, next.name)
+   819→          break
+   820→        }
+   821→        case 'replicaset':
+   822→          s.replicaSets = state.replicaSets.map((r) => (r.id === id ? ({ ...r, ...patch, labels: (patch.labels as Labels) ?? r.labels } as ReplicaSet) : r))
+   823→          logEvent(s, 'Normal', 'ScalingReplicaSet', `ReplicaSet ${name || id} updated`, name)
+   824→          break
+   825→        case 'daemonset': {
+   826→          const ds = state.daemonSets.find((d) => d.id === id)
+   827→          if (!ds) return state
+   828→          const next = { ...ds, ...patch, labels: (patch.labels as Labels) ?? ds.labels } as DaemonSet
+   829→          const specChanged = next.image !== ds.image
+   830→          s.daemonSets = state.daemonSets.map((d) => (d.id === id ? next : d))
+   831→          if (specChanged) {
+   832→            // recreate all pods
+   833→            s.pods = state.pods.filter((p) => p.ownerId !== id)
+   834→            logEvent(s, 'Normal', 'RollingUpdate', `DaemonSet ${next.name}: image → ${next.image}, restarting pods on every node`, next.name)
+   835→          }
+   836→          break
+   837→        }
+   838→        case 'statefulset': {
+   839→          const sts = state.statefulSets.find((d) => d.id === id)
+   840→          if (!sts) return state
+   841→          const next = { ...sts, ...patch } as StatefulSet
+   842→          const specChanged = next.image !== sts.image
+   843→          s.statefulSets = state.statefulSets.map((d) => (d.id === id ? next : d))
+   844→          if (specChanged) {
+   845→            s.pods = state.pods.filter((p) => p.ownerId !== id)
+   846→            logEvent(s, 'Normal', 'RollingUpdate', `StatefulSet ${next.name}: image → ${next.image}, recreating pods in order`, next.name)
+   847→          } else {
+   848→            logEvent(s, 'Normal', 'ScalingStatefulSet', `StatefulSet ${next.name} scaled to ${next.replicas} — ${next.replicas > sts.replicas ? 'creating' : 'removing'} ordinal pods`, next.name)
+   849→          }
+   850→          break
+   851→        }
+   852→        case 'service': {
+   853→          const svc = state.services.find((v) => v.id === id)
+   854→          if (!svc) return state
+   855→          const next = { ...svc, ...patch, selector: (patch.selector as Labels) ?? svc.selector } as Service
+   856→          if (next.type !== svc.type) {
+   857→            next.nodePort = next.type === 'ClusterIP' ? null : rand2(30000, 32767)
+   858→            next.externalIP = null
+   859→            next.lbTicks = next.type === 'LoadBalancer' ? 5 : 0
+   860→          }
+   861→          s.services = state.services.map((v) => (v.id === id ? next : v))
+   862→          logEvent(s, 'Normal', 'Updated', `Service ${next.name} updated (${next.type}, selector ${JSON.stringify(next.selector)})`, next.name)
+   863→          break
+   864→        }
+   865→        case 'configmap':
+   866→          s.configMaps = state.configMaps.map((c) => (c.id === id ? ({ ...c, ...patch, data: (patch.data as Record<string, string>) ?? c.data } as ConfigMap) : c))
+   867→          logEvent(s, 'Normal', 'Updated', `ConfigMap ${name || id} updated`, name)
+   868→          break
+   869→        case 'secret':
+   870→          s.secrets = state.secrets.map((c) => (c.id === id ? ({ ...c, ...patch, data: (patch.data as Record<string, string>) ?? c.data } as Secret) : c))
+   871→          logEvent(s, 'Normal', 'Updated', `Secret ${name || id} updated`, name)
+   872→          break
+   873→        case 'cronjob':
+   874→          s.cronJobs = state.cronJobs.map((c) => (c.id === id ? ({ ...c, ...patch } as CronJob) : c))
+   875→          logEvent(s, 'Normal', 'Updated', `CronJob ${name || id} updated (schedule ${(patch.schedule as string) ?? ''})`, name)
+   876→          break
+   877→        case 'job':
+   878→          s.jobs = state.jobs.map((j) => (j.id === id ? ({ ...j, ...patch } as Job) : j))
+   879→          break
+   880→        case 'pod': {
+   881→          const pod = state.pods.find((p) => p.id === id)
+   882→          if (!pod) return state
+   883→          s.pods = state.pods.map((p) => (p.id === id ? ({ ...p, ...patch, labels: (patch.labels as Labels) ?? p.labels } as typeof pod) : p))
+   884→          const next = { ...pod, ...patch } as typeof pod
+   885→          logEvent(s, 'Normal', 'Updated', `Pod ${next.name} edited — env: ${next.envConfigMap ? `ConfigMap ${next.envConfigMap}` : 'none'}${next.envSecret ? `, Secret ${next.envSecret}` : ''}`, next.name)
+   886→          break
+   887→        }
+   888→        case 'namespace': {
+   889→          const ns = state.namespaces.find((n) => n.id === id)
+   890→          if (!ns) return state
+   891→          const nextNs = { ...ns, ...patch, labels: (patch.labels as Labels) ?? ns.labels } as Namespace
+   892→          s.namespaces = state.namespaces.map((n) => (n.id === id ? nextNs : n))
+   893→          logEvent(s, 'Normal', 'Updated', `Namespace ${nextNs.name} updated`, nextNs.name)
+   894→          break
+   895→        }
+   896→        default:
+   897→          break
+   898→      }
+   899→      return s
+   900→    }),
+   901→
+   902→  removeResource: (kind, id) =>
+   903→    set((state) => {
+   904→      const s = { ...state, events: [...state.events] } as ClusterState
+   905→      const drop = (pred: (p: typeof state.pods[number]) => boolean) => {
+   906→        for (const p of state.pods.filter(pred)) {
+   907→          if (p.phase !== 'Terminating') {
+   908→            const pod = s.pods.find((x) => x.id === p.id)
+   909→            if (pod) {
+   910→              pod.phase = 'Terminating'
+   911→              pod.phaseTicks = 0
+   912→            }
+   913→          }
+   914→        }
+   915→        // hard drop if already terminating or succeeded
+   916→        s.pods = s.pods.filter((p) => !pred(p) || (p.phase !== 'Terminating' && p.phase !== 'Succeeded'))
+   917→      }
+   918→      switch (kind) {
+   919→        case 'pod':
+   920→          drop((p) => p.id === id)
+   921→          logEvent(s, 'Normal', 'Killing', `Deleting pod ${id}`, id)
+   922→          break
+   923→        case 'deployment':
+   924→          s.deployments = state.deployments.filter((d) => d.id !== id)
+   925→          s.replicaSets = state.replicaSets.filter((r) => r.parentDeployment !== id)
+   926→          drop((p) => state.replicaSets.filter((r) => r.parentDeployment === id).some((r) => p.ownerId === r.id))
+   927→          logEvent(s, 'Normal', 'Deleting', `Deployment deleted — cascading to ReplicaSets and pods`, id)
+   928→          break
+   929→        case 'replicaset':
+   930→          s.replicaSets = state.replicaSets.filter((r) => r.id !== id)
+   931→          drop((p) => p.ownerId === id)
+   932→          logEvent(s, 'Normal', 'Deleting', `ReplicaSet deleted — pods terminating`, id)
+   933→          break
+   934→        case 'daemonset':
+   935→          s.daemonSets = state.daemonSets.filter((d) => d.id !== id)
+   936→          drop((p) => p.ownerId === id)
+   937→          logEvent(s, 'Normal', 'Deleting', `DaemonSet deleted — pods terminating`, id)
+   938→          break
+   939→        case 'statefulset':
+   940→          s.statefulSets = state.statefulSets.filter((d) => d.id !== id)
+   941→          drop((p) => p.ownerId === id)
+   942→          logEvent(s, 'Normal', 'Deleting', `StatefulSet deleted`, id)
+   943→          break
+   944→        case 'service':
+   945→          s.services = state.services.filter((v) => v.id !== id)
+   946→          logEvent(s, 'Normal', 'Deleting', `Service deleted`, id)
+   947→          break
+   948→        case 'configmap':
+   949→          s.configMaps = state.configMaps.filter((c) => c.id !== id)
+   950→          logEvent(s, 'Normal', 'Deleting', `ConfigMap deleted`, id)
+   951→          break
+   952→        case 'secret':
+   953→          s.secrets = state.secrets.filter((c) => c.id !== id)
+   954→          logEvent(s, 'Normal', 'Deleting', `Secret deleted`, id)
+   955→          break
+   956→        case 'cronjob':
+   957→          s.cronJobs = state.cronJobs.filter((c) => c.id !== id)
+   958→          logEvent(s, 'Normal', 'Deleting', `CronJob deleted`, id)
+   959→          break
+   960→        case 'job':
+   961→          s.jobs = state.jobs.filter((j) => j.id !== id)
+   962→          drop((p) => p.ownerId === id)
+   963→          logEvent(s, 'Normal', 'Deleting', `Job deleted`, id)
+   964→          break
+   965→        case 'namespace': {
+   966→          const ns = state.namespaces.find((n) => n.id === id)
+   967→          if (!ns) return state
+   968→          if (ns.name === 'default') {
+   969→            logEvent(s, 'Warning', 'Forbidden', `Namespace "default" cannot be deleted (system namespace)`, ns.name)
+   970→            return state
+   971→          }
+   972→          // cascade: delete every resource inside the namespace (like kubectl delete ns)
+   973→          s.namespaces = state.namespaces.filter((n) => n.id !== id)
+   974→          s.deployments = state.deployments.filter((d) => d.namespace !== ns.name)
+   975→          s.replicaSets = state.replicaSets.filter((r) => r.namespace !== ns.name)
+   976→          s.daemonSets = state.daemonSets.filter((d) => d.namespace !== ns.name)
+   977→          s.statefulSets = state.statefulSets.filter((d) => d.namespace !== ns.name)
+   978→          s.services = state.services.filter((v) => v.namespace !== ns.name)
+   979→          s.configMaps = state.configMaps.filter((c) => c.namespace !== ns.name)
+   980→          s.secrets = state.secrets.filter((c) => c.namespace !== ns.name)
+   981→          s.cronJobs = state.cronJobs.filter((c) => c.namespace !== ns.name)
+   982→          s.jobs = state.jobs.filter((j) => j.namespace !== ns.name)
+   983→          drop((p) => p.namespace === ns.name)
+   984→          if (state.activeNamespace === ns.name) s.activeNamespace = 'all'
+   985→          logEvent(s, 'Warning', 'NamespaceTerminating', `Namespace ${ns.name} deleted — all resources inside it were terminated too`, ns.name)
+   986→          break
+   987→        }
+   988→        default:
+   989→          break
+   990→      }
+   991→      if (state.selected && state.selected.startsWith(`${kind}:`)) s.selected = null
+   992→      return s
+   993→    }),
+   994→
+   995→  crashPod: (id) =>
+   996→    set((state) => {
+   997→      const pod = state.pods.find((p) => p.id === id)
+   998→      if (!pod || pod.phase !== 'Running') return state
+   999→      const s = { ...state, events: [...state.events], pods: state.pods.map((p) => (p.id === id ? { ...p, phase: 'CrashLoopBackOff' as PodPhase, phaseTicks: 0, restarts: p.restarts + 1 } : p)) } as ClusterState
+  1000→      logEvent(s, 'Warning', 'BackOff', `Back-off restarting failed container in pod ${pod.name} (restart #${pod.restarts + 1})`, pod.name)
+  1001→      return s
+  1002→    }),
+  1003→
+  1004→  restartPod: (id) =>
+  1005→    set((state) => {
+  1006→      const s = { ...state, events: [...state.events], pods: state.pods.map((p) => (p.id === id ? { ...p, phase: 'ContainerCreating' as PodPhase, phaseTicks: 0 } : p)) } as ClusterState
+  1007→      const pod = state.pods.find((p) => p.id === id)
+  1008→      if (pod) logEvent(s, 'Normal', 'Started', `Manual restart of pod ${pod.name}`, pod.name)
+  1009→      return s
+  1010→    }),
+  1011→
+  1012→  scaleDeployment: (id, replicas) =>
+  1013→    set((state) => {
+  1014→      const dep = state.deployments.find((d) => d.id === id)
+  1015→      if (!dep) return state
+  1016→      const s = { ...state, events: [...state.events], deployments: state.deployments.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)), replicaSets: state.replicaSets.map((r) => (r.parentDeployment === id && !r.superseded ? { ...r, replicas: Math.max(0, replicas) } : r)) } as ClusterState
+  1017→      logEvent(s, 'Normal', 'ScalingReplicaSet', `Scaled deployment ${dep.name} from ${dep.replicas} to ${Math.max(0, replicas)}`, dep.name)
+  1018→      return s
+  1019→    }),
+  1020→
+  1021→  scaleReplicaSet: (id, replicas) =>
+  1022→    set((state) => {
+  1023→      const rs = state.replicaSets.find((r) => r.id === id)
+  1024→      if (!rs) return state
+  1025→      const s = { ...state, events: [...state.events], replicaSets: state.replicaSets.map((r) => (r.id === id ? { ...r, replicas: Math.max(0, replicas) } : r)) } as ClusterState
+  1026→      logEvent(s, 'Normal', 'ScalingReplicaSet', `Scaled ReplicaSet ${rs.name} to ${Math.max(0, replicas)}`, rs.name)
+  1027→      return s
+  1028→    }),
+  1029→
+  1030→  scaleStatefulSet: (id, replicas) =>
+  1031→    set((state) => {
+  1032→      const sts = state.statefulSets.find((d) => d.id === id)
+  1033→      if (!sts) return state
+  1034→      const s = { ...state, events: [...state.events], statefulSets: state.statefulSets.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)) } as ClusterState
+  1035→      logEvent(s, 'Normal', 'ScalingStatefulSet', `Scaled StatefulSet ${sts.name} to ${Math.max(0, replicas)} — ${Math.max(0, replicas) > sts.replicas ? 'adding' : 'removing'} ordinal pods`, sts.name)
+  1036→      return s
+  1037→    }),
+  1038→
+  1039→  reset: () =>
+  1040→    set({
+  1041→      nodes: [
+  1042→        { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
+  1043→        { id: 'n1', name: 'worker-node-1', role: 'worker', cpuCapacity: 4000, memCapacity: 8192, position: { x: 0, y: 180 } },
+  1044→        { id: 'n2', name: 'worker-node-2', role: 'worker', cpuCapacity: 4000, memCapacity: 8192, position: { x: 600, y: 180 } },
+  1045→      ],
+  1046→      pods: [],
+  1047→      deployments: [],
+  1048→      replicaSets: [],
+  1049→      daemonSets: [],
+  1050→      statefulSets: [],
+  1051→      services: [],
+  1052→      configMaps: [],
+  1053→      secrets: [],
+  1054→      cronJobs: [],
+  1055→      jobs: [],
+  1056→      namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
+  1057→      activeNamespace: 'all',
+  1058→      internalsNode: null,
+  1059→      events: [],
+  1060→      tickCount: 0,
+  1061→      selected: null,
+  1062→      editing: null,
+  1063→    }),
+  1064→}))
+  1065→
+  1066→function rand2(min: number, max: number): number {
+  1067→  return Math.floor(Math.random() * (max - min + 1)) + min
+  1068→}
+  1069→
+  1070→// endpoints helper for services (used by UI)
+  1071→export function serviceEndpoints(pods: (Pod & { nodeId: string | null })[], svc: Service): (Pod & { nodeId: string | null })[] {
+  1072→  return pods.filter((p) => selectorMatches(svc.selector, p.labels) && p.phase === 'Running')
+  1073→}
+  1074→
+  1075→

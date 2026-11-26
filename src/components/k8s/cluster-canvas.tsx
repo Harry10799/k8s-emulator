@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Server, Waypoints } from 'lucide-react'
 import {
   ReactFlow,
   Background,
@@ -16,6 +17,7 @@ import { useCluster, nodeUsage, type DropPayload } from '@/lib/cluster-store'
 import { WorkerNodeCard, type WorkerNodeData } from './worker-node-card'
 import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
 import { CanvasRegistry } from './canvas-registry'
+import { TopologyCanvas } from './topology-canvas'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
@@ -23,6 +25,7 @@ const nodeTypes: NodeTypes = {
 }
 
 export function ClusterCanvas() {
+  const [view, setView] = useState<'infra' | 'topo'>('infra')
   const nodes = useCluster((s) => s.nodes)
   const pods = useCluster((s) => s.pods)
   const deployments = useCluster((s) => s.deployments)
@@ -105,6 +108,29 @@ export function ClusterCanvas() {
 
   return (
     <div className="h-full w-full bg-zinc-950" ref={wrapper}>
+      {/* view toggle: infrastructure (nodes & pods) vs topology (resource relations) */}
+      <div className="absolute top-2 left-1/2 z-20 flex -translate-x-1/2 rounded-lg border border-zinc-700 bg-zinc-900/95 shadow-lg overflow-hidden">
+        <button
+          onClick={() => setView('infra')}
+          aria-pressed={view === 'infra'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            view === 'infra' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Server className="h-3.5 w-3.5" /> Infrastructure
+        </button>
+        <button
+          onClick={() => setView('topo')}
+          aria-pressed={view === 'topo'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            view === 'topo' ? 'bg-zinc-800 text-sky-400' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Waypoints className="h-3.5 w-3.5" /> Topology
+        </button>
+      </div>
+
+      {view === 'infra' ? (
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -125,8 +151,11 @@ export function ClusterCanvas() {
           showInteractive={false}
         />
       </ReactFlow>
+      ) : (
+        <TopologyCanvas />
+      )}
 
-      {pending.length > 0 && (
+      {view === 'infra' && pending.length > 0 && (
         <div className="absolute left-3 top-3 z-10 rounded-lg border border-amber-600/40 bg-zinc-900/95 p-2 shadow-lg max-w-[220px]">
           <div className="text-[10px] uppercase tracking-wider text-amber-500 mb-1 font-semibold">Unscheduled ({pending.length})</div>
           {pending.map((p) => (
@@ -136,7 +165,7 @@ export function ClusterCanvas() {
       )}
 
       {/* cluster-level resources (cm/secret/svc/cj/job) visible + editable on canvas */}
-      <CanvasRegistry />
+      {view === 'infra' && <CanvasRegistry />}
     </div>
   )
 }
