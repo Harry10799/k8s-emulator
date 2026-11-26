@@ -100,11 +100,15 @@ function advancePodLifecycle(state: EngineState, pod: PodResource): void {
     if (status.state === "Terminated" || status.state === "Waiting") {
       if (status.waitingReason === "CrashLoopBackOff" && state.tick < (status.nextRestartTick ?? state.tick + 1)) continue;
       if (/(^|[/:])(?:not-found|does-not-exist|invalid-image)(?=[:@/]|$)/i.test(spec.image)) {
+        if (state.tick < (status.nextPullTick ?? state.tick)) continue;
+        status.imagePullAttempts = (status.imagePullAttempts ?? 0) + 1;
         status.state = "Waiting";
         status.ready = false;
-        status.waitingReason = status.restartCount > 0 ? "ImagePullBackOff" : "ErrImagePull";
-        if (state.tick % 3 === 0) appendEvent(state, "Warning", status.waitingReason,
-          `Failed to pull image "${spec.image}" for container ${spec.name}`, pod.metadata.name);
+        status.waitingReason = status.imagePullAttempts === 1 ? "ErrImagePull" : "ImagePullBackOff";
+        const backoff = Math.min(2 ** Math.max(0, status.imagePullAttempts - 1), 16);
+        status.nextPullTick = state.tick + backoff;
+        appendEvent(state, "Warning", status.waitingReason,
+          `Failed to pull image "${spec.image}" for container ${spec.name}; retry in ${backoff} tick(s)`, pod.metadata.name);
         continue;
       }
       status.state = "Running";

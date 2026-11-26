@@ -89,6 +89,8 @@ export interface PodResource {
       consecutiveProbeFailures?: { startup: number; readiness: number; liveness: number };
       lastProbeTick?: { startup: number; readiness: number; liveness: number };
       nextRestartTick?: number;
+      imagePullAttempts?: number;
+      nextPullTick?: number;
     }>;
   };
   ownerReferences?: OwnerReference[];

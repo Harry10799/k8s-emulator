@@ -168,7 +168,8 @@ describe("simulation engine", () => {
       spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 50, memoryMi: 64 } }, readinessProbe: { failureTicks: [2], failureThreshold: 1 } }] },
       status: { phase: "Pending", conditions: [], containerStatuses: [] },
     };
-    const result = step(createInitialState([node("worker-a"), pod]), createSeededRng(11));
+    let result = step(createInitialState([node("worker-a"), pod]), createSeededRng(11));
+    result = step(result, createSeededRng(11));
     const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
     expect(actual.status.phase).toBe("Running");
     expect(actual.status.conditions.find((c) => c.type === "Ready")?.status).toBe(false);
