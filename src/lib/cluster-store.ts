@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { createInitialState } from '../../engine/engine'
 import { reconcileDeployments as reconcileDeploymentsEngine } from '../../engine/reconcile'
 import { createSeededRng } from '../../engine/rng'
-import { advanceCanvasRuntime, resetCanvasRuntime } from '../../engine/canvas-runtime'
+import { advanceCanvasRuntime, resetCanvasRuntime, type CanvasControllers } from '../../engine/canvas-runtime'
 
 export type PodPhase =
   | 'Pending'
@@ -435,12 +435,25 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const t = s.tickCount
       // Re-seeding per tick makes crash injection reproducible for the same tick.
       const tickRng = createSeededRng(0x5eed1234 ^ t)
-      const workers = () => s.nodes.filter((n) => n.role === 'worker')
-
       const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
       // ---- persistent engine owns scheduling and kubelet/container lifecycle ----
-      const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng)
+      const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng, {
+        daemonSets: s.daemonSets,
+        statefulSets: s.statefulSets,
+        cronJobs: s.cronJobs,
+        jobs: s.jobs,
+        pvcs: s.pvcs,
+        services: s.services,
+      } satisfies CanvasControllers)
       s.pods = runtime.pods
+      if (runtime.controllers) {
+        s.daemonSets = runtime.controllers.daemonSets
+        s.statefulSets = runtime.controllers.statefulSets
+        s.cronJobs = runtime.controllers.cronJobs
+        s.jobs = runtime.controllers.jobs
+        s.pvcs = runtime.controllers.pvcs
+        s.services = runtime.controllers.services
+      }
       for (const event of runtime.events) {
         s.events.unshift({ id: event.id, time: simTime(t), type: event.type, reason: event.reason, message: event.message, object: event.object })
       }
@@ -486,156 +499,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
         }
       }
 
-      // ---- daemonset controller ----
-      for (const ds of s.daemonSets) {
-        for (const n of workers()) {
-          const existing = s.pods.filter((p) => p.ownerId === ds.id && p.requiredNode === n.id && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
-          if (existing.length === 0) {
-            s.pods.push(
-              basePod({
-                name: `${ds.name}-${rand(5)}-${rand(5)}`,
-                namespace: ds.namespace,
-                labels: { ...ds.labels, pod: rand(4) },
-                ownerId: ds.id,
-                ownerKind: 'daemonset',
-                image: ds.image,
-                cpuRequest: ds.cpuRequest,
-                memRequest: ds.memRequest,
-                crashRate: ds.crashRate,
-                requiredNode: n.id,
-              }) as never
-            )
-            logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${ds.name} started pod on ${n.name}`, ds.name)
-          }
-        }
-      }
-
-      // ---- statefulset controller (ordered) ----
-      for (const sts of s.statefulSets) {
-        for (let i = 0; i < sts.replicas; i++) {
-          const name = `${sts.name}-${i}`
-          const existing = s.pods.find((p) => p.name === name && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
-          if (!existing) {
-            // wait until all lower ordinals are Running
-            const lower: number[] = []
-            for (let j = 0; j < i; j++) {
-              const lp = s.pods.find((p) => p.name === `${sts.name}-${j}`)
-              if (!lp || lp.phase !== 'Running') lower.push(j)
-            }
-            if (lower.length > 0) continue
-            // volumeClaimTemplate: one PVC per ordinal pod (data-<pod>), like real k8s
-            const pvcName = `data-${name}`
-            if (sts.storageGi > 0 && !s.pvcs.some((v) => v.name === pvcName && v.namespace === sts.namespace)) {
-              s.pvcs = [...s.pvcs, { id: uid('pvc'), name: pvcName, namespace: sts.namespace, sizeGi: sts.storageGi, storageClass: 'standard', status: 'Pending', createdTick: t }]
-              logEvent(s, 'Normal', 'Provisioning', `PersistentVolumeClaim ${pvcName} (${sts.storageGi}Gi) provisioned for pod ${name}`, sts.name)
-            }
-            s.pods.push(
-              basePod({
-                name,
-                namespace: sts.namespace,
-                labels: { ...sts.labels, 'apps.kubernetes.io/pod-index': String(i), pod: name },
-                ownerId: sts.id,
-                ownerKind: 'statefulset',
-                image: sts.image,
-                cpuRequest: sts.cpuRequest,
-                memRequest: sts.memRequest,
-                crashRate: sts.crashRate,
-                mountedPvc: sts.storageGi > 0 ? pvcName : null,
-              }) as never
-            )
-            logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${sts.name} created ${name} (ordinal ${i})`, sts.name)
-          }
-        }
-        // scale down: remove highest ordinal
-        const pods = s.pods.filter((p) => p.ownerId === sts.id && p.phase !== 'Terminating' && p.phase !== 'Succeeded')
-        if (pods.length > sts.replicas) {
-          const sorted = pods.sort((a, b) => (parseInt(a.name.split('-').pop() ?? '0') - parseInt(b.name.split('-').pop() ?? '0')))
-          const victim = sorted[sorted.length - 1]
-          victim.phase = 'Terminating'
-          victim.phaseTicks = 0
-          logEvent(s, 'Normal', 'Killing', `StatefulSet scaling down: stopping ${victim.name}`, sts.name)
-        }
-      }
-
-      // ---- cronjob controller ----
-      for (const cj of s.cronJobs) {
-        const interval = parseSchedule(cj.schedule)
-        if (interval <= 0) continue
-        if (t - cj.lastRun >= interval) {
-          cj.lastRun = t
-          const job: Job = {
-            id: uid('job'),
-            name: `${cj.name}-${t}`,
-            namespace: cj.namespace,
-            image: cj.image,
-            duration: cj.duration,
-            status: 'Active',
-            cronjobOwner: cj.id,
-            createdTick: t,
-          }
-          s.jobs.push(job)
-          s.pods.push(
-            basePod({
-              name: `${job.name}-${rand(5)}`,
-              namespace: cj.namespace,
-              labels: { 'k8s kind': 'job', job: job.name },
-              ownerId: job.id,
-              ownerKind: 'job',
-              image: cj.image,
-              cpuRequest: cj.cpuRequest,
-              memRequest: cj.memRequest,
-              crashRate: 0,
-              completionTicks: cj.duration,
-            }) as never
-          )
-          cj.active += 1
-          logEvent(s, 'Normal', 'SuccessfulCreate', `CronJob ${cj.name} spawned Job ${job.name}`, cj.name)
-        }
-      }
-
-      // ---- job status tracking ----
-      for (const job of s.jobs) {
-        if (job.status === 'Active') {
-          const pods = s.pods.filter((p) => p.ownerId === job.id)
-          const done = pods.length > 0 && pods.every((p) => p.phase === 'Succeeded') && pods.some((p) => p.phaseTicks >= 1)
-          if (done) {
-            job.status = 'Complete'
-            if (job.cronjobOwner) {
-              const cj = s.cronJobs.find((c) => c.id === job.cronjobOwner)
-              if (cj) {
-                cj.active -= 1
-                cj.completions += 1
-              }
-            }
-            logEvent(s, 'Normal', 'Completed', `Job ${job.name} completed`, job.name)
-          } else if (t - job.createdTick > 600) {
-            job.status = 'Complete' // safety
-          }
-        }
-      }
-      // GC completed jobs older than 30 ticks
-      s.jobs = s.jobs.filter((j) => !(j.status === 'Complete' && t - j.createdTick > 30))
-
-      // ---- PVC binding (PV controller) ----
-      for (const pvc of s.pvcs) {
-        if (pvc.status === 'Pending' && t - pvc.createdTick >= 3) {
-          pvc.status = 'Bound'
-          logEvent(s, 'Normal', 'Bound', `PersistentVolumeClaim ${pvc.name} bound to PV pv-${rand(4)} (${pvc.sizeGi}Gi ${pvc.storageClass})`, pvc.name)
-        }
-      }
-
-      // ---- service LB ip assignment ----
-      for (const svc of s.services) {
-        if (svc.type === 'LoadBalancer' && !svc.externalIP && svc.lbTicks > 0) {
-          svc.lbTicks -= 1
-          if (svc.lbTicks === 0) {
-            svc.externalIP = `203.0.113.${10 + (s.services.length % 240)}`
-            logEvent(s, 'Normal', 'Assigned', `LoadBalancer ${svc.name} got external IP ${svc.externalIP}`, svc.name)
-          }
-        }
-      }
-
-      // ---- chaos monkey ----
+      // DaemonSet, StatefulSet, Job/CronJob, PVC and Service are reconciled by engine/controllers.ts.\n\n      // ---- chaos monkey ----
       if (s.chaos && t % 3 === 0) {
         const alive = s.pods.filter((p) => p.phase === 'Running')
         if (alive.length > 0 && tickRng.next() < 0.5) {
@@ -734,8 +598,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           break
         case 'job': {
           const job: Job = { id: uid('job'), name, namespace: (payload.namespace as string) ?? 'default', image: (payload.image as string) ?? 'busybox:1.36', duration: (payload.duration as number) ?? 6, status: 'Active', cronjobOwner: null, createdTick: state.tickCount }
-          s.jobs = [...state.jobs, job]
-          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: { job: name }, ownerId: job.id, ownerKind: 'job', image: job.image, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: 0, completionTicks: job.duration }) as never]
+          s.jobs = [...state.jobs, { ...job, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128 }]
           logEvent(s, 'Normal', 'Created', `Job ${name} created — runs for ${job.duration}s sim-time`, name)
           break
         }
