@@ -105,7 +105,6 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource, rng: R
     }
 
     const startup = spec.startupProbe;
-    const startupSucceeded = !startup || !startup.failureTicks?.includes(state.tick);
     if (startup && state.tick - started >= (startup.initialDelayTicks ?? 0)) {
       const result = evaluateProbe(status, "startup", startup, state.tick, started, 3);
       if (result.thresholdReached) {

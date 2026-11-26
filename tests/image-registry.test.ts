@@ -47,4 +47,16 @@ describe("simulated image registry", () => {
     const resource = Object.values(state.resources).find((item): item is PodResource => item.kind === "Pod");
     expect(resource?.status.containerStatuses[0].waitingReason).toBe("ErrImagePull");
   });
+
+  it("uses the injected seeded RNG for container crash injection", () => {
+    const crashPod = pod("busybox:1.36");
+    crashPod.spec.containers[0].simulatedCrashRate = 1;
+    const first = step(createInitialState([worker(), crashPod]), createSeededRng(77));
+    const second = step(createInitialState([worker(), crashPod]), createSeededRng(77));
+    expect(first).toEqual(second);
+    const resource = Object.values(first.resources).find((item): item is PodResource => item.kind === "Pod");
+    expect(resource?.status.containerStatuses[0].lastTerminationReason).toBe("Error");
+    expect(resource?.status.containerStatuses[0].waitingReason).toBe("CrashLoopBackOff");
+  });
+
 });

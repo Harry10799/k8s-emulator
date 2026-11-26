@@ -1,10 +1,9 @@
 'use client'
 
 import { create } from 'zustand'
-import { createInitialState, schedulePendingPods } from '../../engine/engine'
+import { createInitialState } from '../../engine/engine'
 import { reconcileDeployments as reconcileDeploymentsEngine } from '../../engine/reconcile'
 import { createSeededRng } from '../../engine/rng'
-import type { NodeResource, PodResource } from '../../engine/types'
 import { advanceCanvasRuntime, resetCanvasRuntime } from '../../engine/canvas-runtime'
 
 export type PodPhase =
@@ -298,11 +297,6 @@ function logEvent(state: Pick<ClusterState, 'events' | 'tickCount'>, type: 'Norm
   if (state.events.length > 100) state.events.length = 100
 }
 
-function podLog(pod: Pod, tick: number, line: string) {
-  pod.logs.push(`[${simTime(tick)}] ${line}`)
-  if (pod.logs.length > 30) pod.logs.splice(0, pod.logs.length - 30)
-}
-
 export function nodeUsage(pods: Pod[], nodeId: string) {
   return pods
     .filter((p) => p.requiredNode === nodeId || (p.requiredNode === null && p.nodeId === nodeId))
@@ -345,49 +339,6 @@ function basePod(over: Partial<Pod>): Pod {
     ...over,
   }
 }
-
-
-/**
- * Adapt the canvas store snapshot to the pure engine scheduler. All Pending
- * Pods are evaluated together so each placement sees earlier placements in
- * this same scheduling cycle.
- */
-function scheduleClusterWithEngine(pods: Pod[], nodes: K8sNode[], tick: number): { assignments: Map<string, string>; failures: Map<string, string> } {
-  const engineNodes: NodeResource[] = nodes.filter((node) => node.role === 'worker').map((node): NodeResource => ({
-    apiVersion: 'v1',
-    kind: 'Node',
-    metadata: { name: node.name, namespace: undefined, uid: node.id, resourceVersion: 1, generation: 1, labels: { 'kubernetes.io/hostname': node.name, 'node-role.kubernetes.io/worker': '' }, annotations: {}, creationTimestamp: 0 },
-    spec: { capacity: { cpuMilli: node.cpuCapacity, memoryMi: node.memCapacity } },
-    status: { conditions: [{ type: 'Ready', status: true }] },
-  }))
-  const enginePods: PodResource[] = pods.map((item): PodResource => ({
-    apiVersion: 'v1',
-    kind: 'Pod',
-    metadata: { name: item.name, namespace: item.namespace, uid: item.id, resourceVersion: 1, generation: 1, labels: item.labels, annotations: {}, creationTimestamp: item.ageTicks },
-    spec: { containers: [{ name: 'main', image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } } }], ...(item.nodeId ? { nodeName: nodes.find((node) => node.id === item.nodeId)?.name } : {}) },
-    status: { phase: item.phase === 'Succeeded' ? 'Succeeded' : item.phase === 'Terminating' ? 'Failed' : item.phase === 'Running' ? 'Running' : 'Pending', conditions: [], containerStatuses: [] },
-  }))
-  const snapshot = createInitialState([...engineNodes, ...enginePods])
-  snapshot.tick = tick
-  const scheduled = schedulePendingPods(snapshot)
-  const nodeIds = new Map(engineNodes.map((node) => [node.metadata.name, node.metadata.uid]))
-  const assignments = new Map<string, string>()
-  for (const resource of Object.values(scheduled.resources)) {
-    if (resource.kind !== 'Pod' || !resource.spec.nodeName) continue
-    const nodeId = nodeIds.get(resource.spec.nodeName)
-    if (nodeId) assignments.set(resource.metadata.uid, nodeId)
-  }
-  const failures = new Map<string, string>()
-  for (const event of scheduled.events) {
-    if (event.reason === 'FailedScheduling') {
-      for (const pod of pods) {
-        if (pod.name === event.object) failures.set(pod.id, event.message)
-      }
-    }
-  }
-  return { assignments, failures }
-}
-
 
 
 /** Delegate Deployment and ReplicaSet desired-state decisions to the pure engine. */
@@ -487,8 +438,6 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const workers = () => s.nodes.filter((n) => n.role === 'worker')
 
       const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
-      const activeOf = (oid: string) => ownedBy(oid).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
-
       // ---- persistent engine owns scheduling and kubelet/container lifecycle ----
       const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng)
       s.pods = runtime.pods
