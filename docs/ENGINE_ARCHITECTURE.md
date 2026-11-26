@@ -26,7 +26,8 @@ The canvas keeps its existing Zustand-facing data shape as a projection, while `
 - `engine/types.ts`: resource and state contracts.
 - `engine/rng.ts`: seeded deterministic random source.
 - `engine/scheduler.ts`: scheduling filters and scoring.
-- `engine/reconcile.ts`: Deployment and ReplicaSet controller implementations plus status aggregation.\n- `engine/controllers/`: modular DaemonSet, StatefulSet, Job, CronJob, PVC and Service controllers, shared helpers, and the ordered controller registry.
+- `engine/reconcile.ts`: Deployment and ReplicaSet controller implementations plus status aggregation.
+- `engine/controllers/`: modular DaemonSet, StatefulSet, Job, CronJob, PVC and Service controllers, shared helpers, and the ordered controller registry.
 - `engine/engine.ts`: pure simulation step and resource insertion.
 - `tests/engine.test.ts`: deterministic engine behavior tests.
 

@@ -54,6 +54,8 @@ export interface CanvasService {
   clusterIP: string; nodePort: number | null; externalIP: string | null; lbTicks: number;
 }
 export interface CanvasControllers {
+  deployments?: CanvasDeployment[];
+  replicaSets?: CanvasReplicaSet[];
   daemonSets: CanvasDaemonSet[];
   statefulSets: CanvasStatefulSet[];
   cronJobs: CanvasCronJob[];
