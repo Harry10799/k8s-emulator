@@ -1,11 +1,33 @@
 import { describe, expect, it } from "bun:test";
 import { advanceCanvasRuntime, resetCanvasRuntime, type CanvasControllers } from "../engine/canvas-runtime";
-import { createSeededRng } from "../engine";
+import { createInitialState, createSeededRng, injectChaosFailure, type NodeResource, type PodResource } from "../engine";
 
 const nodes = [{ id: "worker-1", name: "worker-1", role: "worker" as const, cpuCapacity: 2000, memCapacity: 2048 }];
 const emptyControllers = (): CanvasControllers => ({ daemonSets: [], statefulSets: [], cronJobs: [], jobs: [], pvcs: [], services: [] });
 
 describe("persistent canvas runtime", () => {
+  it("injects chaos failures through kubelet container restart semantics", () => {
+    const node: NodeResource = {
+      apiVersion: "v1", kind: "Node",
+      metadata: { name: "worker", uid: "worker", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { capacity: { cpuMilli: 2000, memoryMi: 2048 } },
+      status: { conditions: [{ type: "Ready", status: true }] },
+    };
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "web", namespace: "default", uid: "web", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { nodeName: "worker", containers: [{ name: "main", image: "nginx:1.27", resources: { requests: { cpuMilli: 100, memoryMi: 64 } } }] },
+      status: { phase: "Running", conditions: [{ type: "Ready", status: true }], containerStatuses: [{ name: "main", ready: true, restartCount: 0, state: "Running", startedAtTick: 1 }] },
+    };
+    const state = createInitialState([node, pod]);
+    state.tick = 3;
+    state.chaos = true;
+    injectChaosFailure(state, { next: () => 0 });
+    const failed = Object.values(state.resources).find((resource): resource is PodResource => resource.kind === "Pod");
+    expect(failed?.status.phase).toBe("Running");
+    expect(failed?.status.containerStatuses[0]).toMatchObject({ restartCount: 1, waitingReason: "CrashLoopBackOff" });
+  });
+
   it("retains kubelet container state across canvas ticks", () => {
     resetCanvasRuntime();
     const pod = { id: "pod-1", name: "web", namespace: "default", labels: { app: "web" }, phase: "Pending" as const, image: "nginx:1.27", cpuRequest: 100, memRequest: 64, restarts: 0, crashRate: 0, phaseTicks: 0, ageTicks: 0, requiredNode: null, completionTicks: null, nodeId: null, logs: [] };
