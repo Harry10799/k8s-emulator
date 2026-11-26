@@ -5,6 +5,7 @@ import { schedulePod } from "./scheduler";
 import { reconcileNodeResources } from "./resource-management";
 import { advancePodLifecycle } from "./kubelet";
 import { createInitialImageCache } from "./image-registry";
+import { reconcileDaemonSets, reconcileStatefulSets, reconcileJobs, reconcileCronJobs, reconcilePersistentVolumeClaims, reconcileServices } from "./controllers";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
   const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [], imageCache: {} };
@@ -67,11 +68,21 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   // Control-plane order: Deployment -> ReplicaSet -> scheduler/kubelet.
   reconcileDeployments(next);
   reconcileReplicaSets(next);
+  reconcileDaemonSets(next);
+  reconcileStatefulSets(next);
+  reconcileCronJobs(next);
+  reconcileJobs(next);
+  reconcilePersistentVolumeClaims(next);
+  reconcileServices(next);
 
   schedulePendingPodsInPlace(next);
 
   for (const pod of getPods(next)) advancePodLifecycle(next, pod, rng);
   reconcileNodeResources(next);
+  reconcileJobs(next);
+  reconcileDaemonSets(next);
+  reconcileStatefulSets(next);
+  reconcileServices(next);
   reconcileReplicaSets(next);
   syncDeploymentStatuses(next);
 

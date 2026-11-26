@@ -69,6 +69,7 @@ export interface PodSpec {
   nodeSelector?: Labels;
   tolerations?: Toleration[];
   restartPolicy?: "Always" | "OnFailure" | "Never";
+  volumeClaimName?: string;
 }
 
 export type PodPhase = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
@@ -159,7 +160,59 @@ export interface DeploymentResource {
   };
 }
 
-export type KubernetesResource = PodResource | NodeResource | ReplicaSetResource | DeploymentResource;
+
+export interface DaemonSetResource {
+  apiVersion: "apps/v1";
+  kind: "DaemonSet";
+  metadata: ObjectMetadata;
+  spec: { selector: { matchLabels: Labels }; template: { metadata: { labels: Labels }; spec: PodSpec }; nodeSelector?: Labels };
+  status: { desiredNumberScheduled: number; currentNumberScheduled: number; numberReady: number; numberAvailable: number; observedGeneration: number };
+  ownerReferences?: OwnerReference[];
+}
+
+export interface StatefulSetResource {
+  apiVersion: "apps/v1";
+  kind: "StatefulSet";
+  metadata: ObjectMetadata;
+  spec: { replicas: number; serviceName: string; selector: { matchLabels: Labels }; template: { metadata: { labels: Labels }; spec: PodSpec }; volumeClaimTemplate?: { storageGi: number; storageClassName: string } };
+  status: { replicas: number; readyReplicas: number; currentReplicas: number; observedGeneration: number };
+  ownerReferences?: OwnerReference[];
+}
+
+export interface JobResource {
+  apiVersion: "batch/v1";
+  kind: "Job";
+  metadata: ObjectMetadata;
+  spec: { completions: number; parallelism: number; backoffLimit: number; template: { metadata: { labels: Labels }; spec: PodSpec }; durationTicks?: number; cronJobOwner?: string };
+  status: { active: number; succeeded: number; failed: number; conditions: Array<{ type: "Complete" | "Failed"; status: boolean; reason?: string }> };
+  ownerReferences?: OwnerReference[];
+}
+
+export interface CronJobResource {
+  apiVersion: "batch/v1";
+  kind: "CronJob";
+  metadata: ObjectMetadata;
+  spec: { schedule: string; suspend?: boolean; concurrencyPolicy?: "Allow" | "Forbid" | "Replace"; jobTemplate: Omit<JobResource, "metadata" | "status" | "ownerReferences">["spec"] };
+  status: { lastScheduleTick?: number; active: string[]; lastSuccessfulTime?: number };
+}
+
+export interface PersistentVolumeClaimResource {
+  apiVersion: "v1";
+  kind: "PersistentVolumeClaim";
+  metadata: ObjectMetadata;
+  spec: { storageGi: number; storageClassName: string; accessModes?: Array<"ReadWriteOnce" | "ReadOnlyMany" | "ReadWriteMany"> };
+  status: { phase: "Pending" | "Bound"; volumeName?: string; boundAtTick?: number };
+}
+
+export interface ServiceResource {
+  apiVersion: "v1";
+  kind: "Service";
+  metadata: ObjectMetadata;
+  spec: { type: "ClusterIP" | "NodePort" | "LoadBalancer"; selector: Labels; port: number; targetPort: number; protocol?: "TCP" | "UDP" };
+  status: { clusterIP: string; nodePort?: number; externalIP?: string; endpoints: Array<{ podName: string; podUid: string; nodeName?: string; port: number }> };
+}
+
+export type KubernetesResource = PodResource | NodeResource | ReplicaSetResource | DeploymentResource | DaemonSetResource | StatefulSetResource | JobResource | CronJobResource | PersistentVolumeClaimResource | ServiceResource;
 
 export interface EngineEvent {
   id: string;
