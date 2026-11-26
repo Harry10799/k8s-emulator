@@ -5,7 +5,6 @@ import type { Connection } from '@xyflow/react'
 import { useCluster } from '@/lib/cluster-store'
 
 type Store = ReturnType<typeof useCluster.getState>
-type Kind = 'service' | 'ingress' | 'configmap' | 'secret' | 'pvc'
 type WorkloadKind = 'deployment' | 'daemonset' | 'statefulset'
 
 function decode(nodeId: string): { kind: string; id: string } | null {

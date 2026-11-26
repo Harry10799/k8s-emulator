@@ -10,7 +10,7 @@ export function useTraffic(activeNamespace: string) {
   const [selectedIngressId, setSelectedIngressId] = useState('')
   const [trafficRoute, setTrafficRoute] = useState<TrafficRoute | null>(null)
   const [trafficMessage, setTrafficMessage] = useState('')
-  const [trafficRps, setTrafficRpsState] = useState(0)
+  const [trafficRps, setTrafficRpsState] = useState(engineStore.getSnapshot().simulatedRequestsPerSecond ?? 0)
   const setTrafficRps = useCallback((value: number) => { const next = Math.max(0, Math.min(100, Math.round(value))); setTrafficRpsState(next); engineStore.setTrafficRps(next) }, [])
   useEffect(() => {
     if (!trafficRoute) return

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createInitialState, createSeededRng, step, type CronJobResource, type DaemonSetResource, type JobResource, type NodeResource, type PersistentVolumeClaimResource, type PodResource, type ServiceResource, type StatefulSetResource } from "../engine";
+import { createInitialState, createSeededRng, step, type CronJobResource, type DaemonSetResource, type JobResource, type NodeResource, type PersistentVolumeClaimResource, type PodResource, type ServiceResource, type StatefulSetResource, type DeploymentResource } from "../engine";
 
 function node(name: string): NodeResource {
   return {
@@ -75,5 +75,26 @@ describe("additional Kubernetes controllers", () => {
     expect(actual?.status.externalIP).toMatch(/^203\.0\.113\./);
     expect(actual?.status.endpoints).toHaveLength(1);
     expect(actual?.status.endpoints[0].port).toBe(8080);
+  });
+
+  it("copies ConfigMap and Secret envFrom references from a Deployment template to its Pods", () => {
+    const deployment: DeploymentResource = {
+      apiVersion: "apps/v1", kind: "Deployment",
+      metadata: { name: "web", namespace: "default", uid: "dep-web", resourceVersion: 1, generation: 1, labels: { app: "web" }, annotations: {}, creationTimestamp: 0 },
+      spec: {
+        replicas: 1, selector: { matchLabels: { app: "web" } },
+        template: { metadata: { labels: { app: "web" } }, spec: {
+          containers: [{ name: "main", image: "nginx:1.27", resources: { requests: { cpuMilli: 100, memoryMi: 64 } } }],
+          envFrom: [{ configMapRef: { name: "web-config" } }, { secretRef: { name: "web-secret" } }],
+        } },
+      },
+      status: { observedGeneration: 0, replicas: 0, updatedReplicas: 0, readyReplicas: 0, availableReplicas: 0, conditions: [] },
+    };
+    let state = createInitialState([node("worker-a"), deployment]);
+    for (let i = 0; i < 4; i++) state = step(state, createSeededRng(17));
+    const created = pods(state).filter(pod => pod.ownerReferences?.some(owner => owner.kind === "ReplicaSet"));
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every(pod => pod.spec.envFrom?.some(ref => ref.configMapRef?.name === "web-config"))).toBe(true);
+    expect(created.every(pod => pod.spec.envFrom?.some(ref => ref.secretRef?.name === "web-secret"))).toBe(true);
   });
 });
