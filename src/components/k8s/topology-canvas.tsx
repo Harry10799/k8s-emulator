@@ -76,7 +76,7 @@ function TopoCard({ data }: NodeProps<TopoCardNode>) {
     >
       <div className="flex items-center gap-2">
         {/* invisible handles so v13 can wire edges (card → card, left → right) */}
-        <Handle type="target" position={Position.Left} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
+        <Handle type="target" position={Position.Left} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-cyan-400 !opacity-0 group-hover:!opacity-100" />
         <Icon className="h-4 w-4 shrink-0" style={{ color: data.color }} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -88,7 +88,7 @@ function TopoCard({ data }: NodeProps<TopoCardNode>) {
             <span className="truncate text-[9px] text-zinc-500">{data.sub}</span>
           </div>
         </div>
-        <Handle type="source" position={Position.Right} isConnectable={false} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
+        <Handle type="source" position={Position.Right} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-cyan-400 !opacity-0 group-hover:!opacity-100" />
       </div>
     </div>
   )
