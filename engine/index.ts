@@ -10,4 +10,7 @@ export * from "./image-registry";
 export * from "./canvas-runtime";
 export * from "./probes";
 export * from "./controllers/index";
-\nexport * from "./api";\nexport * from "./node-lifecycle";\nexport * from "./manifest";\n
+
+export * from "./api";
+export * from "./node-lifecycle";
+export * from "./manifest";

@@ -5,11 +5,14 @@ import { reconcileNodeResources } from "./resource-management";
 import { advancePodLifecycle, injectChaosFailure } from "./kubelet";
 import { createInitialImageCache } from "./image-registry";
 import { reconcileControllers, reconcilePostKubeletControllers } from "./controllers/registry";
+import { reconcileNodeHeartbeats, evictNotReadyPods } from "./node-lifecycle";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
-  const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [], imageCache: {} };
+  const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [], imageCache: {}, controlPlane: { apiServerAvailable: true, schedulerAvailable: true, controllerManagerAvailable: true, etcdAvailable: true }, nodeController: { heartbeatTimeoutTicks: 5, podEvictionTimeoutTicks: 10 } };
   for (const resource of resources) {
-    state.resources[resourceKey(resource)] = structuredClone(resource);
+    const copy = structuredClone(resource);
+    if (copy.kind === "Node") { copy.status.lastHeartbeatTick ??= 0; copy.status.heartbeatEnabled ??= true; }
+    state.resources[resourceKey(copy)] = copy;
     state.nextResourceVersion = Math.max(state.nextResourceVersion, resource.metadata.resourceVersion + 1);
   }
   state.imageCache = createInitialImageCache(resources);
@@ -64,17 +67,22 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   const next: EngineState = structuredClone(state);
   next.tick += 1;
 
-  // Ordered controller registry reconciles desired state before scheduling.
-  reconcileControllers(next);
+  const apiAvailable = next.controlPlane?.apiServerAvailable !== false && next.controlPlane?.etcdAvailable !== false;
+  if (apiAvailable) reconcileNodeHeartbeats(next);
+  if (apiAvailable && next.controlPlane?.controllerManagerAvailable !== false) { evictNotReadyPods(next); reconcileControllers(next); }
 
-  schedulePendingPodsInPlace(next);
+  if (apiAvailable && next.controlPlane?.schedulerAvailable !== false) schedulePendingPodsInPlace(next);
+  else for (const pod of getPods(next)) if (pod.status.phase === "Pending" && !pod.spec.nodeName) {
+    pod.status.conditions = [...pod.status.conditions.filter(c => c.type !== "PodScheduled"), { type: "PodScheduled", status: false, reason: "SchedulerUnavailable", message: "kube-scheduler or API persistence is unavailable" }];
+    if (next.tick % 4 === 0) appendEvent(next, "Warning", "SchedulerUnavailable", "Pod remains Pending because scheduler/API persistence is unavailable", pod.metadata.name);
+  }
 
   for (const pod of getPods(next)) advancePodLifecycle(next, pod, rng);
   injectChaosFailure(next, rng);
   reconcileNodeResources(next);
   // Reconcile status-dependent controllers after kubelet updates, without
   // advancing Deployment rollout decisions twice in one simulation tick.
-  reconcilePostKubeletControllers(next);
+  if (apiAvailable && next.controlPlane?.controllerManagerAvailable !== false) reconcilePostKubeletControllers(next);
 
   return next;
 }

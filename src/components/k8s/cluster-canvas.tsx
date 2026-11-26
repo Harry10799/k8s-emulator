@@ -17,7 +17,10 @@ import { useCluster, nodeUsage, type DropPayload } from '@/lib/cluster-store'
 import { WorkerNodeCard, type WorkerNodeData } from './worker-node-card'
 import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
 import { CanvasRegistry } from './canvas-registry'
-import { TopologyCanvas } from './topology-canvas'\nimport { EngineConsole } from './engine-console'\nimport { engineStore } from '@/lib/engine-store'\nimport type { NodeResource } from '../../../engine/types'
+import { TopologyCanvas } from './topology-canvas'
+import { EngineConsole } from './engine-console'
+import { engineStore } from '@/lib/engine-store'
+import type { NodeResource } from '../../../engine/types'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
@@ -165,7 +168,8 @@ export function ClusterCanvas() {
       )}
 
       {/* cluster-level resources (cm/secret/svc/cj/job) visible + editable on canvas */}
-      {view === 'infra' && <CanvasRegistry />}\n      <EngineConsole />
+      {view === 'infra' && <CanvasRegistry />}
+      <EngineConsole />
     </div>
   )
 }

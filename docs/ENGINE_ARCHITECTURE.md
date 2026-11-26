@@ -31,13 +31,17 @@ The canvas keeps its existing Zustand-facing data shape as a projection, while `
 - `engine/engine.ts`: pure simulation step and resource insertion.
 - `tests/engine.test.ts`: deterministic engine behavior tests.
 
-## Next milestones
+## Engine API and external-store boundary
 
-1. Move remaining resource CRUD and ownership relationships behind the engine API; keep the canvas model as a read-only projection.
-2. Add generation-aware rollout behavior for DaemonSet and StatefulSet, plus Job retry/backoff and CronJob history/TTL policies.
-3. Expose engine snapshots and selectors through a dedicated external-store boundary; keep Zustand focused on UI state.
-4. Add node heartbeat, cordon/drain, affinity and topology spread, then HPA, metrics and PDB.
-5. Add service DNS, ingress, network policy, YAML import/export, terminal commands, snapshots and learning scenarios.
+`engine/api.ts` provides validated create/get/list/update/patch/delete/scale operations, resourceVersion checks and cascading owner-reference deletion. Writes honor API-server and etcd availability. `src/lib/engine-store.ts` is the React adapter and exposes immutable snapshots with `useSyncExternalStore`. The canvas forms remain a compatibility projection pending their final CRUD migration.
+
+## Control plane and node lifecycle
+
+Scheduler and controller-manager availability are independent. With scheduler down, unscheduled Pods remain Pending with `PodScheduled=False` and reason `SchedulerUnavailable`; existing assigned Pods continue. With controller-manager down, desired-state reconciliation pauses while kubelet simulation continues. API-server and etcd failures reject writes and pause control-plane reconciliation. Node heartbeat timeout sets NotReady and adds the `node.kubernetes.io/not-ready:NoExecute` taint; non-tolerating Pods are evicted after the configured timeout. Cordon blocks scheduling; drain cordons and evicts workloads while preserving DaemonSet Pods by default.
+
+## YAML and kubectl
+
+`engine/manifest.ts` supports a constrained safe YAML subset (maps, sequences, scalars and inline JSON), multi-document manifests and apply. The console supports get, describe, logs, delete, scale and events commands. This is intentionally not a full YAML 1.2 parser. The Engine Console uses a dedicated EngineState store seeded from canvas infrastructure; legacy canvas CRUD forms remain a compatibility projection until their final migration.
 
 
 ## Container lifecycle simulation
