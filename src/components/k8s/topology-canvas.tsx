@@ -175,6 +175,7 @@ export function TopologyCanvas() {
       const deployment = state.deployments.find((item) => item.id === depId)
       if (!service || !deployment || service.namespace !== deployment.namespace) return
       state.updateResource('service', service.id, { selector: { ...deployment.selector } })
+      setTrafficMessage(`Service ${service.name} now selects Deployment ${deployment.name}`)
       return
     }
     const ingressId = id(source, 'ingress')
@@ -184,6 +185,7 @@ export function TopologyCanvas() {
       const service = state.services.find((item) => item.id === targetServiceId)
       if (!ingress || !service || ingress.namespace !== service.namespace) return
       state.updateResource('ingress', ingress.id, { serviceName: service.name })
+      setTrafficMessage(`Ingress ${ingress.name} now routes to Service ${service.name}`)
       return
     }
     const configMapId = id(source, 'configmap')
@@ -194,6 +196,7 @@ export function TopologyCanvas() {
       const pod = state.pods.find((item) => item.id === podId)
       if (!configMap || !pod || configMap.namespace !== pod.namespace) return
       state.updateResource('pod', pod.id, { envConfigMap: configMap.name })
+      setTrafficMessage(`Pod ${pod.name} now imports ConfigMap ${configMap.name}`)
       return
     }
     if (podId && secretId) {
@@ -201,6 +204,7 @@ export function TopologyCanvas() {
       const pod = state.pods.find((item) => item.id === podId)
       if (!secret || !pod || secret.namespace !== pod.namespace) return
       state.updateResource('pod', pod.id, { envSecret: secret.name })
+      setTrafficMessage(`Pod ${pod.name} now imports Secret ${secret.name}`)
       return
     }
     const pvcId = id(source, 'pvc')
@@ -208,9 +212,15 @@ export function TopologyCanvas() {
     if (pvcId && statefulSetId) {
       const pvc = state.pvcs.find((item) => item.id === pvcId)
       const statefulSet = state.statefulSets.find((item) => item.id === statefulSetId)
-      if (!pvc || !statefulSet || pvc.namespace !== statefulSet.namespace) return
+      if (!pvc || !statefulSet || pvc.namespace !== statefulSet.namespace || statefulSet.replicas !== 1) {
+        setTrafficMessage('PVC → StatefulSet requires matching namespaces and exactly one replica (one existing claim cannot safely back multiple ordinals)')
+        return
+      }
       state.updateResource('statefulset', statefulSet.id, { storageGi: pvc.sizeGi, claimName: pvc.name })
+      setTrafficMessage(`StatefulSet ${statefulSet.name} now waits for PVC ${pvc.name} to be Bound`)
+      return
     }
+    setTrafficMessage('Unsupported connection. Use Service → Deployment, Ingress → Service, ConfigMap/Secret → Pod, or PVC → single-replica StatefulSet.')
   }, [])
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
