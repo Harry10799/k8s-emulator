@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { Play, Pause, Plus, RotateCcw, Gauge, Zap } from 'lucide-react'
+import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toaster } from '@/components/ui/sonner'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -77,6 +79,37 @@ function Toolbar() {
   )
 }
 
+/* On screens narrower than lg the right-side inspector panel is hidden.
+   This floating button opens the same Inspector in a sheet so edit/delete
+   actions are reachable at every viewport size. */
+function InspectorSheet() {
+  const [open, setOpen] = useState(false)
+  const selected = useCluster((s) => s.selected)
+
+  // auto-open when a resource gets selected on a small screen
+  useEffect(() => {
+    if (selected) setOpen(true)
+  }, [selected])
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          aria-label="Inspect / edit selected resource"
+          className="lg:hidden fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-emerald-600/50 bg-zinc-900/95 px-3.5 py-2.5 text-xs font-mono text-emerald-400 shadow-lg hover:bg-zinc-800 transition-colors"
+        >
+          <PencilLine className="h-4 w-4" />
+          Inspect / Edit
+          {selected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+        </button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-80 border-zinc-800 bg-zinc-950 p-0 overflow-y-auto custom-scroll">
+        <Inspector />
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 export default function Home() {
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 antialiased">
@@ -119,6 +152,7 @@ export default function Home() {
           <Inspector />
         </aside>
       </div>
+      <InspectorSheet />
       <EditDialog />
       <Toaster theme="dark" />
     </div>

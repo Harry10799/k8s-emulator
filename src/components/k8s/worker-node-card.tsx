@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Trash2, Cpu, MemoryStick } from 'lucide-react'
+import { Trash2, Cpu, MemoryStick, PencilLine } from 'lucide-react'
 import { useCluster, type K8sNode, type Pod } from '@/lib/cluster-store'
 
 export interface WorkerNodeData extends Record<string, unknown> {
@@ -32,6 +32,7 @@ function Bar({ value, max }: { value: number; max: number }) {
 export function WorkerNodeCard({ data }: NodeProps) {
   const d = data as WorkerNodeData
   const select = useCluster((s) => s.select)
+  const setEditing = useCluster((s) => s.setEditing)
   const removeNode = useCluster((s) => s.removeNode)
 
   return (
@@ -48,16 +49,30 @@ export function WorkerNodeCard({ data }: NodeProps) {
             <div className="text-[10px] text-zinc-500">Ready · worker</div>
           </div>
         </div>
-        <button
-          aria-label={`Remove ${d.node.name}`}
-          className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-zinc-800"
-          onClick={(e) => {
-            e.stopPropagation()
-            removeNode(d.node.id)
-          }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            aria-label={`Edit ${d.node.name}`}
+            title="Edit node"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800"
+            onClick={(e) => {
+              e.stopPropagation()
+              setEditing(`node:${d.node.id}`)
+            }}
+          >
+            <PencilLine className="h-4 w-4" />
+          </button>
+          <button
+            aria-label={`Remove ${d.node.name}`}
+            title="Delete node"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-zinc-800"
+            onClick={(e) => {
+              e.stopPropagation()
+              removeNode(d.node.id)
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-1.5 mb-2">
@@ -88,12 +103,18 @@ export function WorkerNodeCard({ data }: NodeProps) {
                     e.stopPropagation()
                     select(`pod:${pod.id}`)
                   }}
+                  title="click to inspect · double-click to edit"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setEditing(`pod:${pod.id}`)
+                  }}
                   className={`group inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800/80 px-2 py-1 text-[10px] font-mono hover:border-emerald-600 transition-colors ${st.text}`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
                   <span className="text-zinc-200">{pod.name}</span>
                   <span className={st.text}>{st.label}</span>
                   {pod.restarts > 0 && <span className="text-red-400">↻{pod.restarts}</span>}
+                  <PencilLine className="h-3 w-3 opacity-0 group-hover:opacity-100 text-zinc-500" />
                 </button>
               )
             })}

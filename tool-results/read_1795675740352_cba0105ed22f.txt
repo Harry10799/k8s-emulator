@@ -1,0 +1,537 @@
+     1→'use client'
+     2→
+     3→import { Trash2, RotateCcw, Bug, Minus, Plus, PencilLine, Boxes } from 'lucide-react'
+     4→import { Button } from '@/components/ui/button'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { useCluster, nodeUsage, serviceEndpoints, type ResourceKind } from '@/lib/cluster-store'
+     7→
+     8→const phaseColor: Record<string, string> = {
+     9→  Running: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    10→  CrashLoopBackOff: 'bg-red-500/15 text-red-400 border-red-500/30',
+    11→  Pending: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+    12→  ContainerCreating: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    13→  Terminating: 'bg-zinc-500/15 text-zinc-500 border-zinc-500/30',
+    14→  Succeeded: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
+    15→}
+    16→
+    17→function Row({ k, v }: { k: string; v: string }) {
+    18→  return (
+    19→    <div className="flex justify-between px-2.5 py-1.5 gap-2">
+    20→      <span className="text-zinc-500 shrink-0">{k}</span>
+    21→      <span className="text-zinc-300 text-right break-all">{v}</span>
+    22→    </div>
+    23→  )
+    24→}
+    25→
+    26→function InfoCard({ title, rows }: { title: string; rows: [string, string][] }) {
+    27→  return (
+    28→    <div className="rounded-lg border border-zinc-700 divide-y divide-zinc-800 text-[11px] font-mono">
+    29→      {rows.map(([k, v]) => <Row key={k} k={k} v={v} />)}
+    30→    </div>
+    31→  )
+    32→}
+    33→
+    34→function EditBtn({ kind, id }: { kind: ResourceKind; id: string }) {
+    35→  const setEditing = useCluster((s) => s.setEditing)
+    36→  return (
+    37→    <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setEditing(`${kind}:${id}`)}>
+    38→      <PencilLine className="h-3.5 w-3.5 mr-1" /> Edit
+    39→    </Button>
+    40→  )
+    41→}
+    42→
+    43→function DeleteBtn({ kind, id }: { kind: ResourceKind; id: string }) {
+    44→  const removeResource = useCluster((s) => s.removeResource)
+    45→  return (
+    46→    <Button size="sm" variant="outline" className="h-7 text-xs border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-500/50" onClick={() => removeResource(kind, id)}>
+    47→      <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+    48→    </Button>
+    49→  )
+    50→}
+    51→
+    52→function ScaleBtns({ onScale, value, min = 0 }: { onScale: (n: number) => void; value: number; min?: number }) {
+    53→  return (
+    54→    <div className="flex items-center gap-2">
+    55→      <Button size="sm" variant="secondary" className="h-7" onClick={() => onScale(value - 1)} disabled={value <= min}>
+    56→        <Minus className="h-3.5 w-3.5" />
+    57→      </Button>
+    58→      <span className="font-mono text-sm text-zinc-200 w-8 text-center">{value}</span>
+    59→      <Button size="sm" variant="secondary" className="h-7" onClick={() => onScale(value + 1)}>
+    60→        <Plus className="h-3.5 w-3.5" />
+    61→      </Button>
+    62→    </div>
+    63→  )
+    64→}
+    65→
+    66→export function Inspector() {
+    67→  const selected = useCluster((s) => s.selected)
+    68→  const pods = useCluster((s) => s.pods)
+    69→  const nodes = useCluster((s) => s.nodes)
+    70→  const deployments = useCluster((s) => s.deployments)
+    71→  const replicaSets = useCluster((s) => s.replicaSets)
+    72→  const daemonSets = useCluster((s) => s.daemonSets)
+    73→  const statefulSets = useCluster((s) => s.statefulSets)
+    74→  const services = useCluster((s) => s.services)
+    75→  const configMaps = useCluster((s) => s.configMaps)
+    76→  const secrets = useCluster((s) => s.secrets)
+    77→  const cronJobs = useCluster((s) => s.cronJobs)
+    78→  const jobs = useCluster((s) => s.jobs)
+    79→  const crashPod = useCluster((s) => s.crashPod)
+    80→  const restartPod = useCluster((s) => s.restartPod)
+    81→  const scaleDeployment = useCluster((s) => s.scaleDeployment)
+    82→  const scaleReplicaSet = useCluster((s) => s.scaleReplicaSet)
+    83→  const scaleStatefulSet = useCluster((s) => s.scaleStatefulSet)
+    84→
+    85→  if (!selected) return <ClusterSummary />
+    86→
+    87→  const [kind, id] = selected.split(':')
+    88→
+    89→  if (kind === 'pod') {
+    90→    const pod = pods.find((p) => p.id === id)
+    91→    if (!pod) return <ClusterSummary />
+    92→    const node = nodes.find((n) => n.id === pod.nodeId)
+    93→    const owner = pod.ownerKind === 'replicaset' ? replicaSets.find((r) => r.id === pod.ownerId)?.name : pod.ownerKind === 'statefulset' ? statefulSets.find((s) => s.id === pod.ownerId)?.name : pod.ownerKind === 'job' ? jobs.find((j) => j.id === pod.ownerId)?.name : null
+    94→    return (
+    95→      <div className="p-3 space-y-3">
+    96→        <div>
+    97→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Pod · inspect</div>
+    98→          <div className="font-mono text-sm text-zinc-100 break-all">{pod.name}</div>
+    99→          <div className="mt-1.5 flex gap-1.5 flex-wrap">
+   100→            <Badge variant="outline" className={`${phaseColor[pod.phase] ?? ''} text-[10px] font-mono`}>{pod.phase}</Badge>
+   101→            {pod.restarts > 0 && <Badge variant="outline" className="text-[10px] font-mono border-red-500/40 text-red-400">↻ {pod.restarts}</Badge>}
+   102→            {pod.completionTicks !== null && <Badge variant="outline" className="text-[10px] font-mono border-sky-500/40 text-sky-400">job: {pod.completionTicks}s left</Badge>}
+   103→          </div>
+   104→        </div>
+   105→        <InfoCard title="pod" rows={[
+   106→          ['Image', pod.image],
+   107→          ['Node', node?.name ?? '<unscheduled>'],
+   108→          ['CPU', `${pod.cpuRequest}m`],
+   109→          ['Memory', `${pod.memRequest}Mi`],
+   110→          ['Labels', Object.entries(pod.labels).map(([k, v]) => `${k}=${v}`).join(' ')],
+   111→          ['Owner', owner ? `${pod.ownerKind}: ${owner}` : pod.ownerKind],
+   112→          ['Env', [pod.envConfigMap && `ConfigMap ${pod.envConfigMap}`, pod.envSecret && `Secret ${pod.envSecret}`].filter(Boolean).join(', ') || 'none'],
+   113→          ['Age', `${pod.ageTicks}s sim`],
+   114→        ]} />
+   115→        <div className="flex flex-wrap gap-2">
+   116→          <EditBtn kind="pod" id={pod.id} />
+   117→          <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => crashPod(pod.id)} disabled={pod.phase !== 'Running'}>
+   118→            <Bug className="h-3.5 w-3.5 mr-1" /> Crash it
+   119→          </Button>
+   120→          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => restartPod(pod.id)}>
+   121→            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restart
+   122→          </Button>
+   123→          <DeleteBtn kind="pod" id={pod.id} />
+   124→        </div>
+   125→        <div>
+   126→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1.5">Container logs</div>
+   127→          <div className="rounded-lg border border-zinc-700 bg-black/60 p-2 h-32 overflow-y-auto custom-scroll">
+   128→            {pod.logs.length === 0 ? (
+   129→              <div className="text-[11px] text-zinc-600 italic">no log lines yet…</div>
+   130→            ) : (
+   131→              pod.logs.map((l, i) => (
+   132→                <div key={i} className={`text-[10px] font-mono leading-4 ${l.includes('ERROR') ? 'text-red-400' : 'text-zinc-400'}`}>{l}</div>
+   133→              ))
+   134→            )}
+   135→          </div>
+   136→        </div>
+   137→      </div>
+   138→    )
+   139→  }
+   140→
+   141→  if (kind === 'node') {
+   142→    const node = nodes.find((n) => n.id === id)
+   143→    if (!node) return <ClusterSummary />
+   144→    const u = nodeUsage(pods, node.id)
+   145→    const nodePods = pods.filter((p) => p.nodeId === node.id)
+   146→    return (
+   147→      <div className="p-3 space-y-3">
+   148→        <div>
+   149→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Node · inspect</div>
+   150→          <div className="font-mono text-sm text-zinc-100">{node.name}</div>
+   151→          <Badge variant="outline" className="mt-1.5 text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">Ready</Badge>
+   152→        </div>
+   153→        <InfoCard title="node" rows={[
+   154→          ['CPU', `${u.cpu}m / ${node.cpuCapacity}m (${Math.round((u.cpu / node.cpuCapacity) * 100)}%)`],
+   155→          ['Memory', `${u.mem}Mi / ${node.memCapacity}Mi (${Math.round((u.mem / node.memCapacity) * 100)}%)`],
+   156→          ['Pods', `${nodePods.length}`],
+   157→          ['Role', node.role],
+   158→        ]} />
+   159→        <EditBtn kind="node" id={node.id} />
+   160→        <div className="space-y-1">
+   161→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Pods on this node</div>
+   162→          {nodePods.map((p) => (
+   163→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   164→              <span className="text-zinc-400 truncate">{p.name}</span>
+   165→              <span className={p.phase === 'Running' ? 'text-emerald-400' : p.phase === 'CrashLoopBackOff' ? 'text-red-400' : 'text-zinc-500'}>{p.phase}</span>
+   166→            </div>
+   167→          ))}
+   168→        </div>
+   169→        <div className="text-[10px] text-zinc-500 leading-4">
+   170→          Delete a node from the canvas — DaemonSet pods on it vanish; controllers reschedule other pods onto remaining nodes.
+   171→        </div>
+   172→      </div>
+   173→    )
+   174→  }
+   175→
+   176→  if (kind === 'deployment') {
+   177→    const dep = deployments.find((d) => d.id === id)
+   178→    if (!dep) return <ClusterSummary />
+   179→    const depRs = replicaSets.filter((r) => r.parentDeployment === dep.id)
+   180→    const activeRs = depRs.find((r) => !r.superseded)
+   181→    const mine = pods.filter((p) => depRs.some((r) => p.ownerId === r.id))
+   182→    const ready = mine.filter((p) => p.phase === 'Running').length
+   183→    return (
+   184→      <div className="p-3 space-y-3">
+   185→        <div>
+   186→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Deployment · inspect</div>
+   187→          <div className="font-mono text-sm text-zinc-100">{dep.name}</div>
+   188→          <div className="mt-1.5 flex gap-1.5">
+   189→            <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-400 bg-emerald-500/10">{ready}/{dep.replicas} ready</Badge>
+   190→            <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-400">rev {dep.revision}</Badge>
+   191→          </div>
+   192→        </div>
+   193→        <InfoCard title="dep" rows={[
+   194→          ['Image', dep.image],
+   195→          ['Selector', Object.entries(dep.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
+   196→          ['CPU / pod', `${dep.cpuRequest}m`],
+   197→          ['Mem / pod', `${dep.memRequest}Mi`],
+   198→          ['ReplicaSets', `${depRs.length} (${depRs.filter((r) => r.superseded).length} superseded)`],
+   199→          ['Rollout', activeRs ? `rev ${activeRs.revision} active` : '…'],
+   200→        ]} />
+   201→        <div className="flex flex-wrap items-center gap-2">
+   202→          <EditBtn kind="deployment" id={dep.id} />
+   203→          <ScaleBtns value={dep.replicas} onScale={(n) => scaleDeployment(dep.id, n)} />
+   204→          <DeleteBtn kind="deployment" id={dep.id} />
+   205→        </div>
+   206→        <div className="space-y-1">
+   207→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Owned pods</div>
+   208→          {mine.map((p) => (
+   209→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   210→              <span className="text-zinc-400 truncate">{p.name}</span>
+   211→              <span className={p.phase === 'Running' ? 'text-emerald-400' : p.phase === 'CrashLoopBackOff' ? 'text-red-400' : 'text-zinc-500'}>{p.phase}</span>
+   212→            </div>
+   213→          ))}
+   214→        </div>
+   215→      </div>
+   216→    )
+   217→  }
+   218→
+   219→  if (kind === 'replicaset') {
+   220→    const rs = replicaSets.find((r) => r.id === id)
+   221→    if (!rs) return <ClusterSummary />
+   222→    const mine = pods.filter((p) => p.ownerId === rs.id)
+   223→    const ready = mine.filter((p) => p.phase === 'Running').length
+   224→    return (
+   225→      <div className="p-3 space-y-3">
+   226→        <div>
+   227→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">ReplicaSet · inspect</div>
+   228→          <div className="font-mono text-sm text-zinc-100">{rs.name}</div>
+   229→          <div className="mt-1.5 flex gap-1.5">
+   230→            <Badge variant="outline" className={`text-[10px] font-mono ${rs.superseded ? 'border-zinc-600 text-zinc-500' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{ready}/{rs.replicas} ready</Badge>
+   231→            {rs.superseded && <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-500">superseded</Badge>}
+   232→            {!rs.parentDeployment && <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-500">standalone</Badge>}
+   233→          </div>
+   234→        </div>
+   235→        <InfoCard title="rs" rows={[
+   236→          ['Image', rs.image],
+   237→          ['Selector', Object.entries(rs.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
+   238→          ['Revision', `v${rs.revision}`],
+   239→          ['CPU / pod', `${rs.cpuRequest}m`],
+   240→          ['Mem / pod', `${rs.memRequest}Mi`],
+   241→        ]} />
+   242→        <div className="flex flex-wrap items-center gap-2">
+   243→          <EditBtn kind="replicaset" id={rs.id} />
+   244→          {!rs.parentDeployment && <ScaleBtns value={rs.replicas} onScale={(n) => scaleReplicaSet(rs.id, n)} />}
+   245→          <DeleteBtn kind="replicaset" id={rs.id} />
+   246→        </div>
+   247→        <div className="space-y-1">
+   248→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Owned pods</div>
+   249→          {mine.map((p) => (
+   250→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   251→              <span className="text-zinc-400 truncate">{p.name}</span>
+   252→              <span className={p.phase === 'Running' ? 'text-emerald-400' : 'text-red-400'}>{p.phase}</span>
+   253→            </div>
+   254→          ))}
+   255→        </div>
+   256→      </div>
+   257→    )
+   258→  }
+   259→
+   260→  if (kind === 'daemonset') {
+   261→    const ds = daemonSets.find((d) => d.id === id)
+   262→    if (!ds) return <ClusterSummary />
+   263→    const mine = pods.filter((p) => p.ownerId === ds.id)
+   264→    const ready = mine.filter((p) => p.phase === 'Running').length
+   265→    const workers = nodes.filter((n) => n.role === 'worker')
+   266→    return (
+   267→      <div className="p-3 space-y-3">
+   268→        <div>
+   269→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">DaemonSet · inspect</div>
+   270→          <div className="font-mono text-sm text-zinc-100">{ds.name}</div>
+   271→          <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-emerald-500/30 text-emerald-400 bg-emerald-500/10">{ready}/{workers.length} nodes covered</Badge>
+   272→        </div>
+   273→        <InfoCard title="ds" rows={[
+   274→          ['Image', ds.image],
+   275→          ['Selector', Object.entries(ds.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
+   276→          ['CPU / pod', `${ds.cpuRequest}m`],
+   277→          ['Mem / pod', `${ds.memRequest}Mi`],
+   278→          ['Strategy', 'one pod per worker node'],
+   279→        ]} />
+   280→        <div className="flex flex-wrap gap-2">
+   281→          <EditBtn kind="daemonset" id={ds.id} />
+   282→          <DeleteBtn kind="daemonset" id={ds.id} />
+   283→        </div>
+   284→        <div className="space-y-1">
+   285→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Per-node pods</div>
+   286→          {mine.map((p) => (
+   287→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   288→              <span className="text-zinc-400 truncate">{p.name} @ {nodes.find((n) => n.id === p.nodeId)?.name ?? '—'}</span>
+   289→              <span className={p.phase === 'Running' ? 'text-emerald-400' : 'text-zinc-500'}>{p.phase}</span>
+   290→            </div>
+   291→          ))}
+   292→        </div>
+   293→      </div>
+   294→    )
+   295→  }
+   296→
+   297→  if (kind === 'statefulset') {
+   298→    const sts = statefulSets.find((d) => d.id === id)
+   299→    if (!sts) return <ClusterSummary />
+   300→    const mine = pods.filter((p) => p.ownerId === sts.id && p.phase !== 'Succeeded')
+   301→    const ready = mine.filter((p) => p.phase === 'Running').length
+   302→    return (
+   303→      <div className="p-3 space-y-3">
+   304→        <div>
+   305→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">StatefulSet · inspect</div>
+   306→          <div className="font-mono text-sm text-zinc-100">{sts.name}</div>
+   307→          <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-emerald-500/30 text-emerald-400 bg-emerald-500/10">{ready}/{sts.replicas} ready</Badge>
+   308→        </div>
+   309→        <InfoCard title="sts" rows={[
+   310→          ['Image', sts.image],
+   311→          ['Service', sts.serviceName],
+   312→          ['CPU / pod', `${sts.cpuRequest}m`],
+   313→          ['Mem / pod', `${sts.memRequest}Mi`],
+   314→          ['Naming', `${sts.name}-0 … ${sts.name}-${Math.max(0, sts.replicas - 1)}`],
+   315→        ]} />
+   316→        <div className="flex flex-wrap items-center gap-2">
+   317→          <EditBtn kind="statefulset" id={sts.id} />
+   318→          <ScaleBtns value={sts.replicas} onScale={(n) => scaleStatefulSet(sts.id, n)} />
+   319→          <DeleteBtn kind="statefulset" id={sts.id} />
+   320→        </div>
+   321→        <div className="space-y-1">
+   322→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Ordinal pods (stable names)</div>
+   323→          {mine.map((p) => (
+   324→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   325→              <span className="text-zinc-400 truncate">{p.name}</span>
+   326→              <span className={p.phase === 'Running' ? 'text-emerald-400' : 'text-zinc-500'}>{p.phase}</span>
+   327→            </div>
+   328→          ))}
+   329→        </div>
+   330→      </div>
+   331→    )
+   332→  }
+   333→
+   334→  if (kind === 'service') {
+   335→    const svc = services.find((v) => v.id === id)
+   336→    if (!svc) return <ClusterSummary />
+   337→    const eps = serviceEndpoints(pods, svc)
+   338→    return (
+   339→      <div className="p-3 space-y-3">
+   340→        <div>
+   341→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Service · inspect</div>
+   342→          <div className="font-mono text-sm text-zinc-100">{svc.name}</div>
+   343→          <div className="mt-1.5 flex gap-1.5 flex-wrap">
+   344→            <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-300">{svc.type}</Badge>
+   345→            <Badge variant="outline" className={`text-[10px] font-mono ${eps.length > 0 ? 'border-emerald-500/30 text-emerald-400' : 'border-amber-500/30 text-amber-400'}`}>{eps.length} endpoints</Badge>
+   346→          </div>
+   347→        </div>
+   348→        <InfoCard title="svc" rows={[
+   349→          ['ClusterIP', svc.clusterIP],
+   350→          ['Selector', Object.entries(svc.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
+   351→          ['Port', `${svc.port} → ${svc.targetPort} (${svc.protocol})`],
+   352→          ['NodePort', svc.nodePort ? String(svc.nodePort) : '—'],
+   353→          ['ExternalIP', svc.type === 'LoadBalancer' ? (svc.externalIP ?? 'provisioning…') : '—'],
+   354→        ]} />
+   355→        <div className="flex flex-wrap gap-2">
+   356→          <EditBtn kind="service" id={svc.id} />
+   357→          <DeleteBtn kind="service" id={svc.id} />
+   358→        </div>
+   359→        <div className="space-y-1">
+   360→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Endpoints (running pods matching selector)</div>
+   361→          {eps.length === 0 && (
+   362→            <div className="text-[11px] text-amber-500/80 italic">no pods match — deploy pods with these labels</div>
+   363→          )}
+   364→          {eps.map((p) => (
+   365→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   366→              <span className="text-zinc-400 truncate">{p.name}</span>
+   367→              <span className="text-emerald-400">{nodes.find((n) => n.id === p.nodeId)?.name}:{svc.targetPort}</span>
+   368→            </div>
+   369→          ))}
+   370→        </div>
+   371→      </div>
+   372→    )
+   373→  }
+   374→
+   375→  if (kind === 'configmap' || kind === 'secret') {
+   376→    const res = kind === 'configmap' ? configMaps.find((c) => c.id === id) : secrets.find((c) => c.id === id)
+   377→    if (!res) return <ClusterSummary />
+   378→    const consumers = pods.filter((p) => (kind === 'configmap' ? p.envConfigMap === res.name : p.envSecret === res.name))
+   379→    return (
+   380→      <div className="p-3 space-y-3">
+   381→        <div>
+   382→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">{kind === 'configmap' ? 'ConfigMap' : 'Secret'} · inspect</div>
+   383→          <div className="font-mono text-sm text-zinc-100">{res.name}</div>
+   384→        </div>
+   385→        <div className="rounded-lg border border-zinc-700 bg-black/40 p-2.5">
+   386→          {Object.entries(res.data).map(([k, v]) => (
+   387→            <div key={k} className="text-[11px] font-mono leading-5">
+   388→              <span className="text-emerald-500">{k}</span>
+   389→              <span className="text-zinc-600"> = </span>
+   390→              <span className={kind === 'secret' ? 'text-amber-400' : 'text-zinc-300'}>{v}</span>
+   391→            </div>
+   392→          ))}
+   393→          {Object.keys(res.data).length === 0 && <div className="text-[11px] text-zinc-600 italic">empty</div>}
+   394→        </div>
+   395→        <div className="flex flex-wrap gap-2">
+   396→          <EditBtn kind={kind as ResourceKind} id={res.id} />
+   397→          <DeleteBtn kind={kind as ResourceKind} id={res.id} />
+   398→        </div>
+   399→        <div className="space-y-1">
+   400→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Mounted by (envFrom)</div>
+   401→          {consumers.length === 0 && <div className="text-[11px] text-zinc-600 italic">no pods consume this yet — edit a pod and set env</div>}
+   402→          {consumers.map((p) => (
+   403→            <div key={p.id} className="text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{p.name}</div>
+   404→          ))}
+   405→        </div>
+   406→      </div>
+   407→    )
+   408→  }
+   409→
+   410→  if (kind === 'cronjob') {
+   411→    const cj = cronJobs.find((c) => c.id === id)
+   412→    if (!cj) return <ClusterSummary />
+   413→    const myJobs = jobs.filter((j) => j.cronjobOwner === cj.id)
+   414→    return (
+   415→      <div className="p-3 space-y-3">
+   416→        <div>
+   417→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">CronJob · inspect</div>
+   418→          <div className="font-mono text-sm text-zinc-100">{cj.name}</div>
+   419→          <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-zinc-600 text-zinc-300">every {parseSched(cj.schedule)}s sim-time</Badge>
+   420→        </div>
+   421→        <InfoCard title="cj" rows={[
+   422→          ['Schedule', cj.schedule],
+   423→          ['Job image', cj.image],
+   424→          ['Job runtime', `${cj.duration}s sim`],
+   425→          ['Completions', `${cj.completions}`],
+   426→          ['Active', `${cj.active}`],
+   427→        ]} />
+   428→        <div className="flex flex-wrap gap-2">
+   429→          <EditBtn kind="cronjob" id={cj.id} />
+   430→          <DeleteBtn kind="cronjob" id={cj.id} />
+   431→        </div>
+   432→        <div className="space-y-1">
+   433→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Recent jobs</div>
+   434→          {myJobs.slice(0, 6).map((j) => (
+   435→            <div key={j.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   436→              <span className="text-zinc-400 truncate">{j.name}</span>
+   437→              <span className={j.status === 'Complete' ? 'text-emerald-400' : 'text-amber-400'}>{j.status}</span>
+   438→            </div>
+   439→          ))}
+   440→        </div>
+   441→      </div>
+   442→    )
+   443→  }
+   444→
+   445→  if (kind === 'job') {
+   446→    const job = jobs.find((j) => j.id === id)
+   447→    if (!job) return <ClusterSummary />
+   448→    const myPods = pods.filter((p) => p.ownerId === job.id)
+   449→    return (
+   450→      <div className="p-3 space-y-3">
+   451→        <div>
+   452→          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Job · inspect</div>
+   453→          <div className="font-mono text-sm text-zinc-100">{job.name}</div>
+   454→          <Badge variant="outline" className={`mt-1.5 text-[10px] font-mono ${job.status === 'Complete' ? 'border-emerald-500/30 text-emerald-400' : 'border-amber-500/30 text-amber-400'}`}>{job.status}</Badge>
+   455→        </div>
+   456→        <InfoCard title="job" rows={[
+   457→          ['Image', job.image],
+   458→          ['Runtime', `${job.duration}s sim`],
+   459→          ['Completions', '1/1'],
+   460→        ]} />
+   461→        <div className="flex flex-wrap gap-2">
+   462→          <EditBtn kind="job" id={job.id} />
+   463→          <DeleteBtn kind="job" id={job.id} />
+   464→        </div>
+   465→        <div className="space-y-1">
+   466→          <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Job pods</div>
+   467→          {myPods.map((p) => (
+   468→            <div key={p.id} className="flex items-center justify-between text-[10px] font-mono rounded border border-zinc-800 bg-zinc-900 px-2 py-1">
+   469→              <span className="text-zinc-400 truncate">{p.name}</span>
+   470→              <span className={p.phase === 'Succeeded' ? 'text-emerald-400' : 'text-zinc-400'}>{p.phase}</span>
+   471→            </div>
+   472→          ))}
+   473→        </div>
+   474→      </div>
+   475→    )
+   476→  }
+   477→
+   478→  return <ClusterSummary />
+   479→}
+   480→
+   481→function parseSched(s: string): string {
+   482→  const m = s.match(/^\*\/(\d+)/)
+   483→  if (m) return m[1]
+   484→  if (s.trim() === '* * * * *') return '60'
+   485→  const p = s.match(/^(\d+)$/)
+   486→  if (p) return p[1]
+   487→  return '?'
+   488→}
+   489→
+   490→export function ClusterSummary() {
+   491→  const nodes = useCluster((s) => s.nodes)
+   492→  const pods = useCluster((s) => s.pods)
+   493→  const deployments = useCluster((s) => s.deployments)
+   494→  const services = useCluster((s) => s.services)
+   495→  const running = pods.filter((p) => p.phase === 'Running').length
+   496→  const crashing = pods.filter((p) => p.phase === 'CrashLoopBackOff').length
+   497→  const workers = nodes.filter((n) => n.role === 'worker')
+   498→  const totalCpu = workers.reduce((a, n) => a + nodeUsage(pods, n.id).cpu, 0)
+   499→  const capCpu = workers.reduce((a, n) => a + n.cpuCapacity, 0)
+   500→  const totalMem = workers.reduce((a, n) => a + nodeUsage(pods, n.id).mem, 0)
+   501→  const capMem = workers.reduce((a, n) => a + n.memCapacity, 0)
+   502→
+   503→  return (
+   504→    <div className="p-3 space-y-3">
+   505→      <div>
+   506→        <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Cluster · overview</div>
+   507→        <div className="text-[11px] text-zinc-500">Nothing selected — click any resource in the list or a pod on canvas to inspect and edit it.</div>
+   508→      </div>
+   509→      <div className="grid grid-cols-2 gap-2">
+   510→        {[
+   511→          ['Nodes', workers.length],
+   512→          ['Pods', pods.length],
+   513→          ['Running', running],
+   514→          ['CrashLooping', crashing],
+   515→        ].map(([label, value]) => (
+   516→          <div key={label as string} className="rounded-lg border border-zinc-700 bg-zinc-900 p-2.5">
+   517→            <div className={`text-lg font-bold font-mono ${label === 'CrashLooping' && (value as number) > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{value}</div>
+   518→            <div className="text-[10px] text-zinc-500">{label}</div>
+   519→          </div>
+   520→        ))}
+   521→      </div>
+   522→      <InfoCard title="alloc" rows={[
+   523→        ['CPU allocated', `${totalCpu}m / ${capCpu}m (${Math.round((totalCpu / Math.max(1, capCpu)) * 100)}%)`],
+   524→        ['Mem allocated', `${totalMem}Mi / ${capMem}Mi (${Math.round((totalMem / Math.max(1, capMem)) * 100)}%)`],
+   525→        ['Deployments', `${deployments.length}`],
+   526→        ['Services', `${services.length}`],
+   527→      ]} />
+   528→      <div className="flex items-start gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-2.5">
+   529→        <Boxes className="h-4 w-4 text-zinc-500 mt-0.5 shrink-0" />
+   530→        <div className="text-[10px] text-zinc-500 leading-4">
+   531→          Every resource is editable: select one → Edit → change image/labels/replicas → watch controllers react (rollouts, rescheduling, endpoint changes).
+   532→        </div>
+   533→      </div>
+   534→    </div>
+   535→  )
+   536→}
+   537→

@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2,
+  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2, PencilLine,
 } from 'lucide-react'
 import { useCluster, serviceEndpoints, type ResourceKind } from '@/lib/cluster-store'
 
@@ -19,6 +19,7 @@ const kindMeta: Record<string, { label: string; icon: typeof Package; short: str
 
 export function ResourceList() {
   const select = useCluster((s) => s.select)
+  const setEditing = useCluster((s) => s.setEditing)
   const pods = useCluster((s) => s.pods)
   const deployments = useCluster((s) => s.deployments)
   const replicaSets = useCluster((s) => s.replicaSets)
@@ -95,6 +96,7 @@ export function ResourceList() {
       <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-1">
         Cluster resources {total > 0 && <span className="text-zinc-600 font-mono normal-case">({total})</span>}
       </div>
+      <div className="text-[10px] text-zinc-600 px-1 -mt-1">click to inspect · ✎ to edit · double-click = edit</div>
       {total === 0 && (
         <div className="text-[11px] text-zinc-600 italic px-1">empty — drag resources from the palette above</div>
       )}
@@ -113,13 +115,27 @@ export function ResourceList() {
                 <div
                   key={item.id}
                   onClick={() => select(`${g.kind}:${item.id}`)}
-                  className="cursor-pointer rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 hover:border-emerald-600/60 transition-colors"
+                  onDoubleClick={() => setEditing(`${g.kind}:${item.id}`)}
+                  title="click to inspect · double-click to edit"
+                  className="group cursor-pointer rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 hover:border-emerald-600/60 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-mono text-zinc-200 truncate">{item.name}</span>
-                    <span className={`text-[10px] font-mono shrink-0 flex items-center gap-1 ${item.status.includes('endpoints') && item.status.startsWith('0') ? 'text-amber-500' : 'text-zinc-500'}`}>
-                      {item.status.includes('Complete') && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
-                      {item.status}
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className={`text-[10px] font-mono flex items-center gap-1 ${item.status.includes('endpoints') && item.status.startsWith('0') ? 'text-amber-500' : 'text-zinc-500'}`}>
+                        {item.status.includes('Complete') && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+                        {item.status}
+                      </span>
+                      <button
+                        aria-label={`Edit ${item.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditing(`${g.kind}:${item.id}`)
+                        }}
+                        className="h-5 w-5 flex items-center justify-center rounded text-zinc-600 hover:text-emerald-400 hover:bg-zinc-800 transition-colors"
+                      >
+                        <PencilLine className="h-3 w-3" />
+                      </button>
                     </span>
                   </div>
                   {item.extra && <div className="text-[10px] text-zinc-600 font-mono truncate">{item.extra}</div>}
