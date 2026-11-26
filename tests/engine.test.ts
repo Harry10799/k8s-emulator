@@ -99,4 +99,25 @@ describe("simulation engine", () => {
     step(initial, createSeededRng(5));
     expect(initial).toEqual(snapshot);
   });
+  it("creates a retained old revision and starts a readiness-gated rolling update", () => {
+    let state = step(createInitialState([node("worker-a"), deployment(2)]), createSeededRng(11));
+    const dep = resourcesOfKind<DeploymentResource>(state, "Deployment")[0];
+    dep.spec.template.spec.containers[0].image = "nginx:1.28";
+    dep.metadata.generation += 1;
+    state = step(state, createSeededRng(12));
+    const sets = resourcesOfKind<ReplicaSetResource>(state, "ReplicaSet");
+    expect(sets).toHaveLength(2);
+    expect(sets.some((rs) => rs.spec.template.spec.containers[0].image === "nginx:1.27")).toBe(true);
+    expect(sets.some((rs) => rs.spec.template.spec.containers[0].image === "nginx:1.28")).toBe(true);
+  });
+
+  it("scales an existing revision without creating another ReplicaSet", () => {
+    let state = step(createInitialState([node("worker-a"), deployment(1)]), createSeededRng(3));
+    const dep = resourcesOfKind<DeploymentResource>(state, "Deployment")[0];
+    dep.spec.replicas = 3; dep.metadata.generation += 1;
+    state = step(state, createSeededRng(4));
+    expect(resourcesOfKind<ReplicaSetResource>(state, "ReplicaSet")).toHaveLength(1);
+    expect(resourcesOfKind<ReplicaSetResource>(state, "ReplicaSet")[0].spec.replicas).toBe(3);
+  });
+
 });
