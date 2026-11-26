@@ -71,13 +71,22 @@ export interface CanvasRuntimeResult<T extends CanvasPod = CanvasPod> {
 }
 
 let engineState: EngineState | null = null;
+const runtimeListeners = new Set<() => void>();
+let emptyRuntimeState: EngineState | null = null;
+function notifyRuntimeSubscribers() { runtimeListeners.forEach(listener => listener()); }
+export function subscribeCanvasRuntime(listener: () => void) { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); }
+export function getCanvasRuntimeState(): EngineState {
+  if (!engineState) emptyRuntimeState ??= createInitialState();
+  return engineState ?? emptyRuntimeState;
+}
+export function setCanvasRuntimeState(next: EngineState): void { engineState = next; emptyRuntimeState = null; notifyRuntimeSubscribers(); }
 
-function toNode(node: CanvasNode): NodeResource {
+function toNode(node: CanvasNode, previous?: NodeResource): NodeResource {
   return {
     apiVersion: "v1", kind: "Node",
-    metadata: { name: node.name, uid: node.id, resourceVersion: 1, generation: 1, labels: { "kubernetes.io/hostname": node.name }, annotations: {}, creationTimestamp: 0 },
-    spec: { capacity: { cpuMilli: node.cpuCapacity, memoryMi: node.memCapacity } },
-    status: { conditions: [{ type: "Ready", status: true }] },
+    metadata: { name: node.name, uid: node.id, resourceVersion: previous?.metadata.resourceVersion ?? 1, generation: previous?.metadata.generation ?? 1, labels: { "kubernetes.io/hostname": node.name }, annotations: { ...(previous?.metadata.annotations ?? {}) }, creationTimestamp: previous?.metadata.creationTimestamp ?? 0 },
+    spec: { capacity: { cpuMilli: node.cpuCapacity, memoryMi: node.memCapacity }, unschedulable: previous?.spec.unschedulable, taints: previous?.spec.taints ? structuredClone(previous.spec.taints) : [] },
+    status: previous ? structuredClone(previous.status) : { conditions: [{ type: "Ready", status: true }], lastHeartbeatTick: 0, heartbeatEnabled: true },
   };
 }
 function metadata(name: string, namespace: string, uid: string, labels: Record<string,string>, previous?: { metadata: { resourceVersion: number; generation: number; creationTimestamp: number; annotations: Record<string,string> } }, createdAt = 0) {
@@ -282,7 +291,8 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   const managedKinds = new Set(["Node", "Pod", "Deployment", "ReplicaSet", "DaemonSet", "StatefulSet", "Job", "CronJob", "PersistentVolumeClaim", "Service"]);
   for (const [key, resource] of Object.entries(resources)) if (managedKinds.has(resource.kind)) delete resources[key];
   for (const node of workerNodes) {
-    const resource = toNode(node); resources[resourceKey(resource)] = resource;
+    const previousNode = Object.values(oldResources).find((item): item is NodeResource => item.kind === "Node" && item.metadata.uid === node.id);
+    const resource = toNode(node, previousNode); resources[resourceKey(resource)] = resource;
     engineState.imageCache[node.id] ??= ["nginx:1.27", "nginx:1.28", "busybox", "busybox:1.36"];
   }
   const activePods = pods.filter(pod => pod.phase !== "Terminating");
@@ -303,6 +313,7 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   }
   engineState = { ...engineState, tick: Math.max(0,tick - 1), resources, chaos: controllers?.chaos ?? false, imageCache: Object.fromEntries(workerNodes.map(node => [node.id,engineState?.imageCache[node.id] ?? []])) };
   engineState = step(engineState,rng);
+  notifyRuntimeSubscribers();
   const currentState = engineState;
   const originalById = new Map(pods.map(pod => [pod.id,pod]));
   const projected = Object.values(currentState.resources).filter((resource): resource is PodResource => resource.kind === "Pod").map(resource => projectPod(resource,originalById.get(resource.metadata.uid),workerNodes,tick));
@@ -317,4 +328,4 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   return { pods: allPods as T[], events, ...(controllers ? { controllers: projectControllers(controllers,currentState) } : {}) };
 }
 
-export function resetCanvasRuntime(): void { engineState = null; }
+export function resetCanvasRuntime(): void { engineState = null; emptyRuntimeState = null; notifyRuntimeSubscribers(); }

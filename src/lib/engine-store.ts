@@ -1,28 +1,63 @@
 'use client'
 import { useSyncExternalStore } from 'react'
-import { createInitialState, step } from '../../engine/engine'
-import { createSeededRng } from '../../engine/rng'
+import { createInitialState } from '../../engine/engine'
 import { createResource, deleteResource, getResource, listResources, scaleResource, updateResource } from '../../engine/api'
 import { cordonNode, drainNode, setNodeHeartbeat } from '../../engine/node-lifecycle'
 import { applyManifests, runKubectl } from '../../engine/manifest'
-import type { EngineState, KubernetesResource, RandomSource } from '../../engine/types'
-let snapshot:EngineState=createInitialState()
-let rng:RandomSource=createSeededRng(0x5eed1234)
-const listeners=new Set<()=>void>()
-function publish(next:EngineState){if(next===snapshot)return;snapshot=next;listeners.forEach(fn=>fn())}
-export const engineStore={
- getSnapshot:()=>snapshot,subscribe:(fn:()=>void)=>{listeners.add(fn);return()=>listeners.delete(fn)},
- reset:(resources:KubernetesResource[]=[])=>{rng=createSeededRng(0x5eed1234);publish(createInitialState(resources))},
- tick:()=>publish(step(snapshot,rng)),
- create:(r:KubernetesResource)=>{const x=createResource(snapshot,r);if(x.ok&&x.state)publish(x.state);return x},
- get:getResource,list:listResources,
- update:(r:KubernetesResource,v?:number)=>{const x=updateResource(snapshot,r,v);if(x.ok&&x.state)publish(x.state);return x},
- delete:(k:any,n:string,ns="default",cascade=true)=>{const x=deleteResource(snapshot,k,n,ns,cascade);if(x.ok&&x.state)publish(x.state);return x},
- scale:(k:any,n:string,r:number,ns="default")=>{const x=scaleResource(snapshot,k,n,r,ns);if(x.ok&&x.state)publish(x.state);return x},
- setControlPlane:(key:'apiServerAvailable'|'schedulerAvailable'|'controllerManagerAvailable'|'etcdAvailable',available:boolean)=>{const next=structuredClone(snapshot);next.controlPlane??={apiServerAvailable:true,schedulerAvailable:true,controllerManagerAvailable:true,etcdAvailable:true};next.controlPlane[key]=available;publish(next)},
- setHeartbeat:(name:string,enabled:boolean)=>publish(setNodeHeartbeat(snapshot,name,enabled)),
- cordon:(name:string,value=true)=>publish(cordonNode(snapshot,name,value)),drain:(name:string)=>publish(drainNode(snapshot,name)),
- applyYaml:(yaml:string)=>{const x=applyManifests(snapshot,yaml);publish(x.state);return x.messages},
- kubectl:(command:string,stdin?:string)=>{const x=runKubectl(snapshot,command,stdin);if(x.state!==snapshot)publish(x.state);return x}
+import type { EngineState, KubernetesResource } from '../../engine/types'
+import { getCanvasRuntimeState, setCanvasRuntimeState, subscribeCanvasRuntime } from '../../engine/canvas-runtime'
+
+const publish = (next: EngineState) => setCanvasRuntimeState(next)
+
+export const engineStore = {
+  getSnapshot: getCanvasRuntimeState,
+  subscribe: subscribeCanvasRuntime,
+  reset: (resources: KubernetesResource[] = []) => publish(createInitialState(resources)),
+  create: (resource: KubernetesResource) => {
+    const result = createResource(getCanvasRuntimeState(), resource)
+    if (result.ok && result.state) publish(result.state)
+    return result
+  },
+  get: getResource,
+  list: listResources,
+  update: (resource: KubernetesResource, expectedVersion?: number) => {
+    const result = updateResource(getCanvasRuntimeState(), resource, expectedVersion)
+    if (result.ok && result.state) publish(result.state)
+    return result
+  },
+  delete: (kind: any, name: string, namespace = 'default', cascade = true) => {
+    const result = deleteResource(getCanvasRuntimeState(), kind, name, namespace, cascade)
+    if (result.ok && result.state) publish(result.state)
+    return result
+  },
+  scale: (kind: any, name: string, replicas: number, namespace = 'default') => {
+    const result = scaleResource(getCanvasRuntimeState(), kind, name, replicas, namespace)
+    if (result.ok && result.state) publish(result.state)
+    return result
+  },
+  setControlPlane: (key: 'apiServerAvailable' | 'schedulerAvailable' | 'controllerManagerAvailable' | 'etcdAvailable', available: boolean) => {
+    const next = structuredClone(getCanvasRuntimeState())
+    next.controlPlane ??= { apiServerAvailable: true, schedulerAvailable: true, controllerManagerAvailable: true, etcdAvailable: true }
+    next.controlPlane[key] = available
+    publish(next)
+  },
+  setHeartbeat: (name: string, enabled: boolean) => publish(setNodeHeartbeat(getCanvasRuntimeState(), name, enabled)),
+  cordon: (name: string, value = true) => publish(cordonNode(getCanvasRuntimeState(), name, value)),
+  drain: (name: string) => publish(drainNode(getCanvasRuntimeState(), name)),
+  applyYaml: (yaml: string) => {
+    const result = applyManifests(getCanvasRuntimeState(), yaml)
+    publish(result.state)
+    return result.messages
+  },
+  kubectl: (command: string, stdin?: string) => {
+    const current = getCanvasRuntimeState()
+    const result = runKubectl(current, command, stdin)
+    if (result.state !== current) publish(result.state)
+    return result
+  },
 }
-export function useEngineSnapshot<T>(selector:(s:EngineState)=>T):T{const state=useSyncExternalStore(engineStore.subscribe,engineStore.getSnapshot,engineStore.getSnapshot);return selector(state)}
+
+export function useEngineSnapshot<T>(selector: (state: EngineState) => T): T {
+  const state = useSyncExternalStore(engineStore.subscribe, engineStore.getSnapshot, engineStore.getSnapshot)
+  return selector(state)
+}

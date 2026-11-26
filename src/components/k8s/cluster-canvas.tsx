@@ -18,9 +18,7 @@ import { WorkerNodeCard, type WorkerNodeData } from './worker-node-card'
 import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
 import { CanvasRegistry } from './canvas-registry'
 import { TopologyCanvas } from './topology-canvas'
-import { EngineConsole } from './engine-console'
-import { engineStore } from '@/lib/engine-store'
-import type { NodeResource } from '../../../engine/types'
+import { ClusterHealth } from './cluster-health'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
@@ -38,27 +36,13 @@ export function ClusterCanvas() {
   const moveNode = useCluster((s) => s.moveNode)
   const createResource = useCluster((s) => s.createResource)
   const wrapper = useRef<HTMLDivElement>(null)
-  const engineInitialized = useRef(false)
   const { screenToFlowPosition } = useReactFlow()
 
-  useEffect(() => {
-    if (engineInitialized.current) return
-    engineInitialized.current = true
-    const engineNodes: NodeResource[] = nodes.map(n => ({
-      apiVersion: "v1", kind: "Node",
-      metadata: { name: n.name, uid: n.id, resourceVersion: 1, generation: 1, labels: { "kubernetes.io/hostname": n.name }, annotations: {}, creationTimestamp: 0 },
-      spec: { capacity: { cpuMilli: n.cpuCapacity, memoryMi: n.memCapacity }, ...(n.role === "control-plane" ? { taints: [{ key: "node-role.kubernetes.io/control-plane", effect: "NoSchedule" as const }] } : {}) },
-      status: { conditions: [{ type: "Ready", status: true }], lastHeartbeatTick: 0, heartbeatEnabled: true },
-    }))
-    engineStore.reset(engineNodes)
-  // Seed once: editing canvas infrastructure must not erase engine API objects.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // simulation heartbeat
   useEffect(() => {
     if (!running) return
-    const interval = setInterval(() => { tick(); engineStore.tick() }, 1000 / speed)
+    const interval = setInterval(() => tick(), 1000 / speed)
     return () => clearInterval(interval)
   }, [running, speed, tick])
 
@@ -184,7 +168,7 @@ export function ClusterCanvas() {
 
       {/* cluster-level resources (cm/secret/svc/cj/job) visible + editable on canvas */}
       {view === 'infra' && <CanvasRegistry />}
-      <EngineConsole />
+      <ClusterHealth />
     </div>
   )
 }

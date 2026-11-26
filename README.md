@@ -42,8 +42,10 @@ The existing Next.js/React Flow interface is under `src/`. The pure TypeScript s
 
 See [docs/ENGINE_ARCHITECTURE.md](docs/ENGINE_ARCHITECTURE.md) for the engine contract, current boundaries and migration milestones.
 
-## Engine console and known boundaries
+## Cluster health and engine boundary
 
-Open the Engine Console in the lower-right of the canvas. The terminal supports `kubectl get`, `describe`, `logs`, `delete`, `scale`, `get events`, and `apply -f -` (the YAML editor is stdin). The YAML importer accepts multi-document manifests for supported core, apps and batch resources and normalizes common CPU/memory quantities. It is a safe YAML subset, not a complete YAML 1.2 implementation.
+The canvas has an integrated **Cluster health** panel in the upper-right. It summarizes node readiness, Pod health and simulation tick, and exposes control-plane availability, node heartbeat, cordon/uncordon and drain scenarios without opening a separate terminal window.
 
-The console is an engine-owned API sandbox seeded with the canvas node inventory. The existing visual resource forms still use their compatibility-facing Zustand model; routing every legacy create/edit/delete action through the new engine CRUD API is the remaining cutover step. The simulator is educational and does not provide full Kubernetes API compatibility, admission, RBAC, PDB, or all kubectl flags.
+The simulation and API adapter now share one retained EngineState. The engine's React adapter uses `useSyncExternalStore` and receives updates from the same runtime that advances the canvas. Existing palette and edit-dialog actions still pass through the compatibility-facing Zustand projection and are synchronized into the engine at simulation ticks; migrating every legacy CRUD action to direct API calls is the next cutover step. The YAML and kubectl engine modules remain available for a future native manifest/workflow surface, but are no longer presented as a floating console.
+
+The simulator is educational and does not provide full Kubernetes API compatibility, admission, RBAC, PDB, or all kubectl flags.
