@@ -231,6 +231,8 @@ export interface EngineState {
   events: EngineEvent[];
   /** Images cached per Node UID, independent from the global registry catalogue. */
   imageCache: Record<string, string[]>;
+  /** Enables deterministic chaos failures for the optional failure-injection scenario. */
+  chaos?: boolean;
 }
 
 export interface RandomSource {

@@ -60,6 +60,7 @@ export interface CanvasControllers {
   jobs: CanvasJob[];
   pvcs: CanvasPvc[];
   services: CanvasService[];
+  chaos?: boolean;
 }
 export interface CanvasRuntimeResult<T extends CanvasPod = CanvasPod> {
   pods: T[];
@@ -298,7 +299,7 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
     for (const item of controllers.pvcs) { const resource = toPvc(item,previousByUid<PersistentVolumeClaimResource>(item.id,"PersistentVolumeClaim")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.services) { const resource = toService(item,previousByUid<ServiceResource>(item.id,"Service"),tick); resources[resourceKey(resource)] = resource; }
   }
-  engineState = { ...engineState, tick: Math.max(0,tick - 1), resources, imageCache: Object.fromEntries(workerNodes.map(node => [node.id,engineState?.imageCache[node.id] ?? []])) };
+  engineState = { ...engineState, tick: Math.max(0,tick - 1), resources, chaos: controllers?.chaos ?? false, imageCache: Object.fromEntries(workerNodes.map(node => [node.id,engineState?.imageCache[node.id] ?? []])) };
   engineState = step(engineState,rng);
   const currentState = engineState;
   const originalById = new Map(pods.map(pod => [pod.id,pod]));

@@ -34,6 +34,20 @@ function restartContainer(pod: PodResource, status: PodResource["status"]["conta
     `Container ${status.name} in pod ${pod.metadata.name} terminated (${reason}, exit ${exitCode}); restart in ${backoff} tick(s)`, pod.metadata.name);
 }
 
+/** Inject one seeded, realistic container failure during chaos-mode ticks. */
+export function injectChaosFailure(state: EngineState, rng: RandomSource): void {
+  if (!state.chaos || state.tick % 3 !== 0) return;
+  const runningPods = Object.values(state.resources).filter(
+    (resource): resource is PodResource => resource.kind === "Pod" && resource.status.phase === "Running",
+  );
+  if (!runningPods.length || rng.next() >= 0.5) return;
+  const victim = runningPods[Math.floor(rng.next() * runningPods.length)];
+  const container = victim.status.containerStatuses.find(status => status.state === "Running");
+  if (!container) return;
+  restartContainer(victim, container, "Error", 1, state);
+  appendEvent(state, "Warning", "ChaosMonkey", `Random container failure injected in pod ${victim.metadata.name}`, victim.metadata.name);
+}
+
 export function advancePodLifecycle(state: EngineState, pod: PodResource, rng: RandomSource): void {
   if (!pod.spec.nodeName || pod.status.phase === "Succeeded" || pod.status.phase === "Failed") return;
   const containers = pod.spec.containers;

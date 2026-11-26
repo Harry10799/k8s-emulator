@@ -2,7 +2,7 @@ import type { EngineState, KubernetesResource, NodeResource, PodResource, Random
 import { appendEvent, putResource, resourceKey } from "./resources";
 import { schedulePod } from "./scheduler";
 import { reconcileNodeResources } from "./resource-management";
-import { advancePodLifecycle } from "./kubelet";
+import { advancePodLifecycle, injectChaosFailure } from "./kubelet";
 import { createInitialImageCache } from "./image-registry";
 import { reconcileControllers, reconcilePostKubeletControllers } from "./controllers/registry";
 
@@ -70,6 +70,7 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   schedulePendingPodsInPlace(next);
 
   for (const pod of getPods(next)) advancePodLifecycle(next, pod, rng);
+  injectChaosFailure(next, rng);
   reconcileNodeResources(next);
   // Reconcile status-dependent controllers after kubelet updates, without
   // advancing Deployment rollout decisions twice in one simulation tick.

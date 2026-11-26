@@ -395,6 +395,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
         jobs: s.jobs,
         pvcs: s.pvcs,
         services: s.services,
+        chaos: s.chaos,
       } satisfies CanvasControllers)
       s.pods = runtime.pods
       if (runtime.controllers) {
@@ -420,18 +421,6 @@ export const useCluster = create<ClusterState>((set, get) => ({
       })
 
       // Deployment, ReplicaSet and workload controllers reconcile in the engine registry.
-
-      // ---- chaos monkey ----
-      if (s.chaos && t % 3 === 0) {
-        const alive = s.pods.filter((p) => p.phase === 'Running')
-        if (alive.length > 0 && tickRng.next() < 0.5) {
-          const victim = alive[Math.floor(tickRng.next() * alive.length)]
-          victim.phase = 'CrashLoopBackOff'
-          victim.phaseTicks = 0
-          victim.restarts += 1
-          logEvent(s, 'Warning', 'ChaosMonkey', `Random failure injected in pod ${victim.name} 🐒`, victim.name)
-        }
-      }
 
       return s
     }),
