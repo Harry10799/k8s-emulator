@@ -246,6 +246,8 @@ export interface EngineState {
   controlPlane?: { apiServerAvailable: boolean; schedulerAvailable: boolean; controllerManagerAvailable: boolean; etcdAvailable: boolean };
   nodeController?: { heartbeatTimeoutTicks: number; podEvictionTimeoutTicks: number };
   simulatedLoadPercent?: number;
+  /** Monotonic deterministic request sequence for replayable traffic simulation. */
+  trafficRequestCount?: number;
 }
 
 export interface RandomSource {

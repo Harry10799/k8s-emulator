@@ -14,3 +14,5 @@ export * from "./controllers/index";
 export * from "./api";
 export * from "./node-lifecycle";
 export * from "./manifest";
+
+export * from "./traffic";

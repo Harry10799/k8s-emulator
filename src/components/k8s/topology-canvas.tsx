@@ -31,7 +31,8 @@ import {
   Globe,
   type LucideIcon,
 } from 'lucide-react'
-import { useCluster, selectorMatches, type Labels } from '@/lib/cluster-store'
+import { useCluster } from '@/lib/cluster-store'
+import { engineStore } from '@/lib/engine-store'
 
 // ---------------------------------------------------------------- card sizes
 const NW = 190 // card width
@@ -137,11 +138,13 @@ export function TopologyCanvas() {
     return () => window.clearTimeout(timer)
   }, [trafficRoute])
 
+  const [selectedIngressId, setSelectedIngressId] = useState('')
   const sendRequest = useCallback(() => {
     const state = useCluster.getState()
-    const ingress = state.ingresses.find((item) => activeNamespace === 'all' || item.namespace === activeNamespace)
+    const ingress = state.ingresses.find((item) => item.id === selectedIngressId &&
+      (activeNamespace === 'all' || item.namespace === activeNamespace))
     if (!ingress) {
-      setTrafficMessage('No Ingress found in the selected namespace')
+      setTrafficMessage('Select an Ingress rule in the current namespace')
       return
     }
     const service = state.services.find((item) => item.namespace === ingress.namespace && item.name === ingress.serviceName)
@@ -149,18 +152,14 @@ export function TopologyCanvas() {
       setTrafficMessage(`Ingress ${ingress.name} has no matching Service backend`)
       return
     }
-    const pod = state.pods.find((item) =>
-      item.namespace === service.namespace &&
-      item.phase === 'Running' &&
-      selectorMatches(service.selector as Labels, item.labels)
-    )
-    if (!pod) {
-      setTrafficMessage(`Request rejected: Service ${service.name} has no ready endpoints`)
+    const result = engineStore.simulateTraffic(ingress.namespace, service.name)
+    if (!result.ok) {
+      setTrafficMessage(`Request ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} · ${result.reason}`)
       return
     }
-    setTrafficMessage(`200 OK · ${ingress.host}${ingress.path} → ${service.name} → ${pod.name}`)
-    setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId: pod.id })
-  }, [activeNamespace])
+    setTrafficMessage(` ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% error model`)
+    setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId: state.pods.find(p => p.name === result.podName && p.namespace === ingress.namespace)?.id ?? '' })
+  }, [activeNamespace, selectedIngressId])
   
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return
@@ -591,6 +590,10 @@ export function TopologyCanvas() {
       )}
 
       <div className="absolute right-3 bottom-3 z-20 flex max-w-[min(420px,calc(100%-24px))] flex-col items-end gap-2">
+        <select aria-label="Ingress host and path rule" value={selectedIngressId} onChange={(event) => setSelectedIngressId(event.target.value)} className="max-w-[220px] rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-[10px] text-zinc-200">
+          <option value="">Select Ingress host/path…</option>
+          {ingresses.filter(item => activeNamespace === 'all' || item.namespace === activeNamespace).map(item => <option key={item.id} value={item.id}>{item.host}{item.path} → {item.serviceName}</option>)}
+        </select>
         <button onClick={sendRequest} className="rounded-lg border border-cyan-500/40 bg-cyan-950/90 px-3 py-2 text-[11px] font-semibold text-cyan-200 shadow-lg hover:bg-cyan-900">
           <span className="mr-1.5">↗</span> Send test request
         </button>

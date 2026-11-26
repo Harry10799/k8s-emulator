@@ -53,7 +53,7 @@ The simulator is educational and does not provide full Kubernetes API compatibil
 
 ### Interactive topology and traffic
 
-The Topology view supports typed drag-to-connect relationships: Service → Deployment (copies the Deployment selector), Ingress → Service (sets the backend), ConfigMap/Secret → Pod (sets environment references), and PVC → StatefulSet (uses the claim size for the StatefulSet storage template). Use **Send test request** to simulate an HTTP request through the first matching Ingress, its Service, and a Running selector-matching Pod. Requests without a ready endpoint are rejected with an explanatory status.
+The Topology view supports typed drag-to-connect relationships: Service → Deployment (copies the Deployment selector), Ingress → Service (sets the backend), ConfigMap/Secret → Pod (sets environment references), and PVC → StatefulSet (uses the claim size for the StatefulSet storage template). Select an explicit Ingress host/path rule and use **Send test request**. Requests route through the engine-published Service endpoint list (Ready Pods only); the deterministic engine traffic model selects an endpoint and reports status, latency and modeled error rate. A failed readiness probe therefore removes the Pod from routing naturally.
 
 
 ### Simulation controls, challenges and autoscaling

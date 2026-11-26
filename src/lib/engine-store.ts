@@ -1,5 +1,6 @@
 'use client'
 import { useSyncExternalStore } from 'react'
+import { simulateServiceRequest } from "../../engine/traffic";
 import { createInitialState } from '../../engine/engine'
 import { createResource, deleteResource, getResource, listResources, scaleResource, updateResource } from '../../engine/api'
 import { cordonNode, drainNode, setNodeHeartbeat } from '../../engine/node-lifecycle'
@@ -34,6 +35,11 @@ export const engineStore = {
     const result = scaleResource(getCanvasRuntimeState(), kind, name, replicas, namespace)
     if (result.ok && result.state) publish(result.state)
     return result
+  },
+  simulateTraffic: (namespace: string, serviceName: string) => {
+    const routed = simulateServiceRequest(getCanvasRuntimeState(), namespace, serviceName)
+    publish(routed.state)
+    return routed.result
   },
   setLoadPercent: (percent: number) => { const next = structuredClone(getCanvasRuntimeState()); next.simulatedLoadPercent = Math.max(0, Math.min(300, Math.round(percent))); publish(next) },
   setControlPlane: (key: 'apiServerAvailable' | 'schedulerAvailable' | 'controllerManagerAvailable' | 'etcdAvailable', available: boolean) => {
