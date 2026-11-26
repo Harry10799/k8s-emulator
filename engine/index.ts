@@ -5,3 +5,4 @@ export * from "./resource-management";
 export * from "./rng";
 export * from "./scheduler";
 export * from "./types";
+export * from "./kubelet";

@@ -160,6 +160,7 @@ describe("simulation engine", () => {
     expect(actual.status.containerStatuses[0].lastTerminationReason).toBe("LivenessProbeFailed");
     expect(actual.status.containerStatuses[0].restartCount).toBe(1);
     expect(actual.status.containerStatuses[0].waitingReason).toBe("CrashLoopBackOff");
+    expect(actual.status.phase).toBe("Running");
   });
 
   it("keeps a Pod Running but NotReady while its readiness probe fails", () => {
@@ -174,6 +175,20 @@ describe("simulation engine", () => {
     const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
     expect(actual.status.phase).toBe("Running");
     expect(actual.status.conditions.find((c) => c.type === "Ready")?.status).toBe(false);
+  });
+
+  it("reports StartupProbeFailed separately from liveness failures", () => {
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "startup-fail", namespace: "default", uid: "startup-fail", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 50, memoryMi: 64 } }, startupProbe: { failureTicks: [1], failureThreshold: 1 } }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    };
+    const result = step(createInitialState([node("worker-a"), pod]), createSeededRng(12));
+    const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
+    expect(actual.status.containerStatuses[0].lastTerminationReason).toBe("StartupProbeFailed");
+    expect(actual.status.containerStatuses[0].waitingReason).toBe("CrashLoopBackOff");
+    expect(actual.status.phase).toBe("Running");
   });
 
   it("classifies BestEffort, Burstable, and Guaranteed QoS", () => {

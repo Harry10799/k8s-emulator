@@ -88,7 +88,7 @@ export interface PodResource {
       restartCount: number;
       state: "Waiting" | "Running" | "Terminated";
       waitingReason?: "ContainerCreating" | "ErrImagePull" | "ImagePullBackOff" | "CrashLoopBackOff";
-      lastTerminationReason?: "Error" | "OOMKilled" | "Completed" | "LivenessProbeFailed";
+      lastTerminationReason?: "Error" | "OOMKilled" | "Completed" | "LivenessProbeFailed" | "StartupProbeFailed";
       exitCode?: number;
       startedAtTick?: number;
       consecutiveProbeFailures?: { startup: number; readiness: number; liveness: number };

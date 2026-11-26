@@ -48,3 +48,10 @@ The kubelet stage now models per-container image-pull failures, startup/readines
 ## Resource management and QoS
 
 The resource-management stage classifies Pods as Guaranteed, Burstable, or BestEffort from container requests and limits. Container workloads can specify deterministic CPU and memory usage: CPU above a configured limit is capped and the excess is reported as throttled millicores; memory usage above a container memory limit triggers the existing OOMKilled path. Each Pod and Node exposes simulated resource usage. Nodes raise MemoryPressure at 90% memory utilization and evict Pods until usage falls below 85%, preferring BestEffort, then Burstable, then Guaranteed Pods. These thresholds and eviction rules are educational approximations, not a complete kubelet implementation.
+
+
+## Kubelet implementation boundary
+
+Container lifecycle and probe evaluation live in engine/kubelet.ts, separate from controller orchestration. Restart backoff is a container waiting state: after a container has started, a Pod remains Running while that container is in CrashLoopBackOff. Startup probe failures have their own StartupProbeFailed termination reason. The engine scheduler uses an in-place internal stage inside step(), avoiding a second full-state clone; the exported schedulePendingPods helper remains immutable for isolated callers.
+
+The canvas store is not yet a single-source-of-truth engine adapter. Its legacy Pod and non-Deployment controller loops remain active until the persistent EngineState migration is completed; the earlier phased-integration description should not be interpreted as full kubelet UI integration.
