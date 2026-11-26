@@ -1,11 +1,12 @@
 'use client'
 
 import {
-  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2, PencilLine,
+  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2, PencilLine, Circle,
 } from 'lucide-react'
 import { useCluster, serviceEndpoints, type ResourceKind } from '@/lib/cluster-store'
 
 const kindMeta: Record<string, { label: string; icon: typeof Package; short: string }> = {
+  namespace: { label: 'Namespaces', icon: Circle, short: 'ns' },
   deployment: { label: 'Deployments', icon: Layers, short: 'deploy' },
   replicaset: { label: 'ReplicaSets', icon: Copy, short: 'rs' },
   statefulset: { label: 'StatefulSets', icon: Boxes, short: 'sts' },
@@ -20,6 +21,8 @@ const kindMeta: Record<string, { label: string; icon: typeof Package; short: str
 export function ResourceList() {
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
+  const activeNamespace = useCluster((s) => s.activeNamespace)
+  const namespaces = useCluster((s) => s.namespaces)
   const pods = useCluster((s) => s.pods)
   const deployments = useCluster((s) => s.deployments)
   const replicaSets = useCluster((s) => s.replicaSets)
@@ -31,18 +34,29 @@ export function ResourceList() {
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
 
-  const groups: { kind: ResourceKind; items: { id: string; name: string; status: string; extra?: string }[] }[] = [
+  const inNs = <T extends { namespace: string }>(list: T[]) => (activeNamespace === 'all' ? list : list.filter((r) => r.namespace === activeNamespace))
+
+  const groups: { kind: ResourceKind; items: { id: string; name: string; status: string; extra?: string; ns?: string }[] }[] = [
+    {
+      kind: 'namespace',
+      items: (activeNamespace === 'all' ? namespaces : namespaces.filter((n) => n.name === activeNamespace)).map((n) => ({
+        id: n.id,
+        name: n.name,
+        status: n.name === 'default' ? 'system' : 'active',
+        extra: Object.keys(n.labels).length > 0 ? Object.entries(n.labels).map(([k, v]) => `${k}=${v}`).join(' ') : undefined,
+      })),
+    },
     {
       kind: 'deployment',
-      items: deployments.map((d) => {
+      items: inNs(deployments).map((d) => {
         const rsPods = pods.filter((p) => replicaSets.filter((r) => r.parentDeployment === d.id).some((r) => p.ownerId === r.id))
         const ready = rsPods.filter((p) => p.phase === 'Running').length
-        return { id: d.id, name: d.name, status: `${ready}/${d.replicas}`, extra: d.image }
+        return { id: d.id, name: d.name, status: `${ready}/${d.replicas}`, extra: `${d.image}${d.namespace !== 'default' ? ` · ns/${d.namespace}` : ''}` }
       }),
     },
     {
       kind: 'replicaset',
-      items: replicaSets.map((r) => {
+      items: inNs(replicaSets).map((r) => {
         const mine = pods.filter((p) => p.ownerId === r.id)
         const ready = mine.filter((p) => p.phase === 'Running').length
         return { id: r.id, name: r.name, status: `${ready}/${r.replicas}`, extra: `${r.superseded ? 'superseded · ' : ''}${r.image}` }
@@ -50,7 +64,7 @@ export function ResourceList() {
     },
     {
       kind: 'statefulset',
-      items: statefulSets.map((d) => {
+      items: inNs(statefulSets).map((d) => {
         const mine = pods.filter((p) => p.ownerId === d.id && p.phase !== 'Succeeded')
         const ready = mine.filter((p) => p.phase === 'Running').length
         return { id: d.id, name: d.name, status: `${ready}/${d.replicas}`, extra: `${d.serviceName}` }
@@ -58,7 +72,7 @@ export function ResourceList() {
     },
     {
       kind: 'daemonset',
-      items: daemonSets.map((d) => {
+      items: inNs(daemonSets).map((d) => {
         const mine = pods.filter((p) => p.ownerId === d.id && p.phase !== 'Succeeded')
         const ready = mine.filter((p) => p.phase === 'Running').length
         return { id: d.id, name: d.name, status: `${ready}/${mine.length}`, extra: d.image }
@@ -66,26 +80,26 @@ export function ResourceList() {
     },
     {
       kind: 'service',
-      items: services.map((s) => {
+      items: inNs(services).map((s) => {
         const eps = serviceEndpoints(pods, s)
         return { id: s.id, name: s.name, status: eps.length > 0 ? `${eps.length} endpoints` : 'no endpoints', extra: `${s.type} · ${s.clusterIP}${s.nodePort ? `:${s.nodePort}` : ''}` }
       }),
     },
     {
       kind: 'configmap',
-      items: configMaps.map((c) => ({ id: c.id, name: c.name, status: `${Object.keys(c.data).length} keys` })),
+      items: inNs(configMaps).map((c) => ({ id: c.id, name: c.name, status: `${Object.keys(c.data).length} keys` })),
     },
     {
       kind: 'secret',
-      items: secrets.map((c) => ({ id: c.id, name: c.name, status: `${Object.keys(c.data).length} keys` })),
+      items: inNs(secrets).map((c) => ({ id: c.id, name: c.name, status: `${Object.keys(c.data).length} keys` })),
     },
     {
       kind: 'cronjob',
-      items: cronJobs.map((c) => ({ id: c.id, name: c.name, status: `${c.completions} done${c.active ? ` · ${c.active} active` : ''}`, extra: `schedule ${c.schedule}s` })),
+      items: inNs(cronJobs).map((c) => ({ id: c.id, name: c.name, status: `${c.completions} done${c.active ? ` · ${c.active} active` : ''}`, extra: `schedule ${c.schedule}s` })),
     },
     {
       kind: 'job',
-      items: jobs.map((j) => ({ id: j.id, name: j.name, status: j.status, extra: j.image })),
+      items: inNs(jobs).map((j) => ({ id: j.id, name: j.name, status: j.status, extra: j.image })),
     },
   ]
 

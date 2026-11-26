@@ -14,7 +14,7 @@ export type Labels = Record<string, string>
 
 export type ResourceKind =
   | 'pod' | 'deployment' | 'replicaset' | 'daemonset' | 'statefulset'
-  | 'service' | 'configmap' | 'secret' | 'cronjob' | 'job' | 'node'
+  | 'service' | 'configmap' | 'secret' | 'cronjob' | 'job' | 'node' | 'namespace'
 
 export interface K8sNode {
   id: string
@@ -25,9 +25,16 @@ export interface K8sNode {
   position: { x: number; y: number }
 }
 
+export interface Namespace {
+  id: string
+  name: string
+  labels: Labels
+}
+
 export interface Pod {
   id: string
   name: string
+  namespace: string
   labels: Labels
   ownerId: string | null // rs/ds/sts/job id
   ownerKind: 'replicaset' | 'daemonset' | 'statefulset' | 'job' | 'deployment' | 'none'
@@ -51,6 +58,7 @@ export interface Pod {
 export interface ReplicaSet {
   id: string
   name: string
+  namespace: string
   labels: Labels
   selector: Labels
   replicas: number
@@ -66,6 +74,7 @@ export interface ReplicaSet {
 export interface Deployment {
   id: string
   name: string
+  namespace: string
   labels: Labels
   selector: Labels
   replicas: number
@@ -79,6 +88,7 @@ export interface Deployment {
 export interface DaemonSet {
   id: string
   name: string
+  namespace: string
   labels: Labels
   selector: Labels
   image: string
@@ -90,6 +100,7 @@ export interface DaemonSet {
 export interface StatefulSet {
   id: string
   name: string
+  namespace: string
   labels: Labels
   serviceName: string
   replicas: number
@@ -104,6 +115,7 @@ export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer'
 export interface Service {
   id: string
   name: string
+  namespace: string
   type: ServiceType
   selector: Labels
   port: number
@@ -118,18 +130,21 @@ export interface Service {
 export interface ConfigMap {
   id: string
   name: string
+  namespace: string
   data: Record<string, string>
 }
 
 export interface Secret {
   id: string
   name: string
+  namespace: string
   data: Record<string, string>
 }
 
 export interface CronJob {
   id: string
   name: string
+  namespace: string
   schedule: string // simplified: "*/N" every N sim-seconds, "* * * * *" = 60s
   image: string
   cpuRequest: number
@@ -143,6 +158,7 @@ export interface CronJob {
 export interface Job {
   id: string
   name: string
+  namespace: string
   image: string
   duration: number
   status: 'Active' | 'Complete'
@@ -195,6 +211,9 @@ export interface ClusterState {
   secrets: Secret[]
   cronJobs: CronJob[]
   jobs: Job[]
+  namespaces: Namespace[]
+  activeNamespace: string // 'all' or a namespace name
+  internalsNode: SelectionId // node whose internals dialog is open
   events: K8sEvent[]
   tickCount: number
   running: boolean
@@ -209,6 +228,8 @@ export interface ClusterState {
   setChaos: (v: boolean) => void
   select: (id: SelectionId) => void
   setEditing: (id: SelectionId) => void
+  setNamespace: (ns: string) => void
+  setInternalsNode: (id: SelectionId) => void
 
   addNode: () => void
   removeNode: (id: string) => void
@@ -267,6 +288,7 @@ function basePod(over: Partial<Pod>): Pod {
   return {
     id: uid('pod'),
     name: 'pod',
+    namespace: 'default',
     labels: { app: 'x' },
     nodeId: null,
     ownerId: null,
@@ -276,7 +298,7 @@ function basePod(over: Partial<Pod>): Pod {
     cpuRequest: 500,
     memRequest: 512,
     restarts: 0,
-    crashRate: 0.02,
+    crashRate: 0,
     phaseTicks: 0,
     ageTicks: 0,
     requiredNode: null,
@@ -306,6 +328,9 @@ export const useCluster = create<ClusterState>((set, get) => ({
   secrets: [],
   cronJobs: [],
   jobs: [],
+  namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
+  activeNamespace: 'all',
+  internalsNode: null,
   events: [],
   tickCount: 0,
   running: true,
@@ -503,6 +528,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
             s.pods.push(
               basePod({
                 name: `${rs.name}-${rand(5)}-${rand(5)}`,
+                namespace: rs.namespace,
                 labels: { ...rs.labels, pod: rand(4) },
                 ownerId: rs.id,
                 ownerKind: 'replicaset',
@@ -531,6 +557,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
             s.pods.push(
               basePod({
                 name: `${ds.name}-${rand(5)}-${rand(5)}`,
+                namespace: ds.namespace,
                 labels: { ...ds.labels, pod: rand(4) },
                 ownerId: ds.id,
                 ownerKind: 'daemonset',
@@ -562,6 +589,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
             s.pods.push(
               basePod({
                 name,
+                namespace: sts.namespace,
                 labels: { ...sts.labels, 'apps.kubernetes.io/pod-index': String(i), pod: name },
                 ownerId: sts.id,
                 ownerKind: 'statefulset',
@@ -594,6 +622,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const job: Job = {
             id: uid('job'),
             name: `${cj.name}-${t}`,
+            namespace: cj.namespace,
             image: cj.image,
             duration: cj.duration,
             status: 'Active',
@@ -604,6 +633,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           s.pods.push(
             basePod({
               name: `${job.name}-${rand(5)}`,
+              namespace: cj.namespace,
               labels: { 'k8s kind': 'job', job: job.name },
               ownerId: job.id,
               ownerKind: 'job',
@@ -673,6 +703,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
   setChaos: (v) => set({ chaos: v }),
   select: (id) => set({ selected: id }),
   setEditing: (id) => set({ editing: id }),
+  setNamespace: (ns) => set({ activeNamespace: ns }),
+  setInternalsNode: (id) => set({ internalsNode: id }),
 
   addNode: () =>
     set((state) => {
@@ -710,49 +742,59 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const name = (payload.name as string) ?? 'res'
       switch (kind) {
         case 'pod':
-          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}-${rand(5)}`, labels: (payload.labels as Labels) ?? { app: name }, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0.02 }) as never]
-          logEvent(s, 'Normal', 'Created', `Pod created: ${name}`, name)
+          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }) as never]
+          logEvent(s, 'Normal', 'Created', `Pod created: ${name} (ns/${(payload.namespace as string) ?? 'default'})`, name)
           break
         case 'deployment':
-          s.deployments = [...state.deployments, { id: uid('dep'), name, labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0.02, revision: 1 }]
+          s.deployments = [...state.deployments, { id: uid('dep'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1 }]
           logEvent(s, 'Normal', 'ScalingReplicaSet', `Deployment ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
           break
         case 'replicaset':
-          s.replicaSets = [...state.replicaSets, { id: uid('rs'), name, labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 2, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0.02, revision: 1, parentDeployment: null, superseded: false }]
+          s.replicaSets = [...state.replicaSets, { id: uid('rs'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 2, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1, parentDeployment: null, superseded: false }]
           logEvent(s, 'Normal', 'SuccessfulCreate', `ReplicaSet ${name} created with ${payload.replicas ?? 2} replica(s)`, name)
           break
         case 'daemonset':
-          s.daemonSets = [...state.daemonSets, { id: uid('ds'), name, labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, image: (payload.image as string) ?? 'fluentd:latest', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: (payload.crashRate as number) ?? 0.02 }]
+          s.daemonSets = [...state.daemonSets, { id: uid('ds'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, image: (payload.image as string) ?? 'fluentd:latest', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: (payload.crashRate as number) ?? 0 }]
           logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${name} created — one pod per node`, name)
           break
         case 'statefulset':
-          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0.02 }]
+          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }]
           logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
           break
         case 'service': {
           const type = (payload.serviceType as ServiceType) ?? 'ClusterIP'
-          const svc: Service = { id: uid('svc'), name, type, selector: (payload.selector as Labels) ?? { app: name }, port: (payload.port as number) ?? 80, targetPort: (payload.targetPort as number) ?? 8080, protocol: 'TCP', clusterIP: `10.96.${rand2(1, 200)}.${rand2(2, 250)}`, nodePort: type === 'ClusterIP' ? null : rand2(30000, 32767), externalIP: null, lbTicks: type === 'LoadBalancer' ? 5 : 0 }
+          const svc: Service = { id: uid('svc'), name, namespace: (payload.namespace as string) ?? 'default', type, selector: (payload.selector as Labels) ?? { app: name }, port: (payload.port as number) ?? 80, targetPort: (payload.targetPort as number) ?? 8080, protocol: 'TCP', clusterIP: `10.96.${rand2(1, 200)}.${rand2(2, 250)}`, nodePort: type === 'ClusterIP' ? null : rand2(30000, 32767), externalIP: null, lbTicks: type === 'LoadBalancer' ? 5 : 0 }
           s.services = [...state.services, svc]
           logEvent(s, 'Normal', 'Created', `Service ${name} (${type}) created — clusterIP ${svc.clusterIP}${svc.nodePort ? `, nodePort ${svc.nodePort}` : ''}`, name)
           break
         }
         case 'configmap':
-          s.configMaps = [...state.configMaps, { id: uid('cm'), name, data: (payload.data as Record<string, string>) ?? { 'config.yaml': 'key: value' } }]
-          logEvent(s, 'Normal', 'Created', `ConfigMap ${name} created`, name)
+          s.configMaps = [...state.configMaps, { id: uid('cm'), name, namespace: (payload.namespace as string) ?? 'default', data: (payload.data as Record<string, string>) ?? { 'config.yaml': 'key: value' } }]
+          logEvent(s, 'Normal', 'Created', `ConfigMap ${name} created (ns/${(payload.namespace as string) ?? 'default'})`, name)
           break
         case 'secret':
-          s.secrets = [...state.secrets, { id: uid('sec'), name, data: (payload.data as Record<string, string>) ?? { username: 'admin' } }]
-          logEvent(s, 'Normal', 'Created', `Secret ${name} created`, name)
+          s.secrets = [...state.secrets, { id: uid('sec'), name, namespace: (payload.namespace as string) ?? 'default', data: (payload.data as Record<string, string>) ?? { username: 'admin' } }]
+          logEvent(s, 'Normal', 'Created', `Secret ${name} created (ns/${(payload.namespace as string) ?? 'default'})`, name)
           break
         case 'cronjob':
-          s.cronJobs = [...state.cronJobs, { id: uid('cj'), name, schedule: (payload.schedule as string) ?? '*/10', image: (payload.image as string) ?? 'busybox:1.36', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, duration: (payload.duration as number) ?? 5, lastRun: state.tickCount, active: 0, completions: 0 }]
+          s.cronJobs = [...state.cronJobs, { id: uid('cj'), name, namespace: (payload.namespace as string) ?? 'default', schedule: (payload.schedule as string) ?? '*/10', image: (payload.image as string) ?? 'busybox:1.36', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, duration: (payload.duration as number) ?? 5, lastRun: state.tickCount, active: 0, completions: 0 }]
           logEvent(s, 'Normal', 'Created', `CronJob ${name} created (schedule ${(payload.schedule as string) ?? '*/10'}s)`, name)
           break
         case 'job': {
-          const job: Job = { id: uid('job'), name, image: (payload.image as string) ?? 'busybox:1.36', duration: (payload.duration as number) ?? 6, status: 'Active', cronjobOwner: null, createdTick: state.tickCount }
+          const job: Job = { id: uid('job'), name, namespace: (payload.namespace as string) ?? 'default', image: (payload.image as string) ?? 'busybox:1.36', duration: (payload.duration as number) ?? 6, status: 'Active', cronjobOwner: null, createdTick: state.tickCount }
           s.jobs = [...state.jobs, job]
-          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}`, labels: { job: name }, ownerId: job.id, ownerKind: 'job', image: job.image, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: 0, completionTicks: job.duration }) as never]
+          s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: { job: name }, ownerId: job.id, ownerKind: 'job', image: job.image, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: 0, completionTicks: job.duration }) as never]
           logEvent(s, 'Normal', 'Created', `Job ${name} created — runs for ${job.duration}s sim-time`, name)
+          break
+        }
+        case 'namespace': {
+          const nsName = (payload.name as string) ?? `ns-${rand(4)}`
+          if (state.namespaces.some((n) => n.name === nsName)) {
+            logEvent(s, 'Warning', 'AlreadyExists', `Namespace "${nsName}" already exists`, nsName)
+            break
+          }
+          s.namespaces = [...state.namespaces, { id: uid('ns'), name: nsName, labels: (payload.labels as Labels) ?? {} }]
+          logEvent(s, 'Normal', 'Created', `Namespace ${nsName} created — resources can now be isolated in it`, nsName)
           break
         }
         default:
@@ -843,6 +885,14 @@ export const useCluster = create<ClusterState>((set, get) => ({
           logEvent(s, 'Normal', 'Updated', `Pod ${next.name} edited — env: ${next.envConfigMap ? `ConfigMap ${next.envConfigMap}` : 'none'}${next.envSecret ? `, Secret ${next.envSecret}` : ''}`, next.name)
           break
         }
+        case 'namespace': {
+          const ns = state.namespaces.find((n) => n.id === id)
+          if (!ns) return state
+          const nextNs = { ...ns, ...patch, labels: (patch.labels as Labels) ?? ns.labels } as Namespace
+          s.namespaces = state.namespaces.map((n) => (n.id === id ? nextNs : n))
+          logEvent(s, 'Normal', 'Updated', `Namespace ${nextNs.name} updated`, nextNs.name)
+          break
+        }
         default:
           break
       }
@@ -912,6 +962,29 @@ export const useCluster = create<ClusterState>((set, get) => ({
           drop((p) => p.ownerId === id)
           logEvent(s, 'Normal', 'Deleting', `Job deleted`, id)
           break
+        case 'namespace': {
+          const ns = state.namespaces.find((n) => n.id === id)
+          if (!ns) return state
+          if (ns.name === 'default') {
+            logEvent(s, 'Warning', 'Forbidden', `Namespace "default" cannot be deleted (system namespace)`, ns.name)
+            return state
+          }
+          // cascade: delete every resource inside the namespace (like kubectl delete ns)
+          s.namespaces = state.namespaces.filter((n) => n.id !== id)
+          s.deployments = state.deployments.filter((d) => d.namespace !== ns.name)
+          s.replicaSets = state.replicaSets.filter((r) => r.namespace !== ns.name)
+          s.daemonSets = state.daemonSets.filter((d) => d.namespace !== ns.name)
+          s.statefulSets = state.statefulSets.filter((d) => d.namespace !== ns.name)
+          s.services = state.services.filter((v) => v.namespace !== ns.name)
+          s.configMaps = state.configMaps.filter((c) => c.namespace !== ns.name)
+          s.secrets = state.secrets.filter((c) => c.namespace !== ns.name)
+          s.cronJobs = state.cronJobs.filter((c) => c.namespace !== ns.name)
+          s.jobs = state.jobs.filter((j) => j.namespace !== ns.name)
+          drop((p) => p.namespace === ns.name)
+          if (state.activeNamespace === ns.name) s.activeNamespace = 'all'
+          logEvent(s, 'Warning', 'NamespaceTerminating', `Namespace ${ns.name} deleted — all resources inside it were terminated too`, ns.name)
+          break
+        }
         default:
           break
       }
@@ -980,6 +1053,9 @@ export const useCluster = create<ClusterState>((set, get) => ({
       secrets: [],
       cronJobs: [],
       jobs: [],
+      namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
+      activeNamespace: 'all',
+      internalsNode: null,
       events: [],
       tickCount: 0,
       selected: null,

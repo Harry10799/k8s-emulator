@@ -95,6 +95,15 @@ const fields: Record<ResourceKind, Field[]> = {
     { key: 'cpuCapacity', label: 'CPU capacity (m)', type: 'number' },
     { key: 'memCapacity', label: 'Memory capacity (Mi)', type: 'number' },
   ],
+  namespace: [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'labels', label: 'Labels', type: 'labels', hint: 'team=dev, env=prod' },
+  ],
+}
+
+// every namespaced kind gets a namespace select
+for (const k of ['pod', 'deployment', 'replicaset', 'daemonset', 'statefulset', 'service', 'configmap', 'secret', 'cronjob', 'job'] as ResourceKind[]) {
+  fields[k]?.splice(1, 0, { key: 'namespace', label: 'Namespace', type: 'select' })
 }
 
 function labelsToString(l?: Record<string, string>): string {
@@ -127,7 +136,7 @@ function stringToKv(s: string): Record<string, string> {
 const kindLabel: Record<string, string> = {
   pod: 'Pod', deployment: 'Deployment', replicaset: 'ReplicaSet', daemonset: 'DaemonSet',
   statefulset: 'StatefulSet', service: 'Service', configmap: 'ConfigMap', secret: 'Secret',
-  cronjob: 'CronJob', job: 'Job', node: 'Node',
+  cronjob: 'CronJob', job: 'Job', node: 'Node', namespace: 'Namespace',
 }
 
 export function EditDialog() {
@@ -141,6 +150,7 @@ function EditForm({ editing }: { editing: string }) {
   const updateResource = useCluster((s) => s.updateResource)
   const configMaps = useCluster((s) => s.configMaps)
   const secrets = useCluster((s) => s.secrets)
+  const namespaces = useCluster((s) => s.namespaces)
 
   const [kind, id] = editing.split(':')
   const schema = fields[kind as ResourceKind] ?? []
@@ -160,6 +170,7 @@ function EditForm({ editing }: { editing: string }) {
       case 'cronjob': res = st.cronJobs.find((c) => c.id === id) as unknown as Record<string, unknown>; break
       case 'job': res = st.jobs.find((j) => j.id === id) as unknown as Record<string, unknown>; break
       case 'node': res = st.nodes.find((n) => n.id === id) as unknown as Record<string, unknown>; break
+      case 'namespace': res = st.namespaces.find((n) => n.id === id) as unknown as Record<string, unknown>; break
       default: res = undefined
     }
     const init: Record<string, string> = {}
@@ -219,6 +230,18 @@ function EditForm({ editing }: { editing: string }) {
                   <SelectContent className="bg-zinc-900 border-zinc-700">
                     {['ClusterIP', 'NodePort', 'LoadBalancer'].map((o) => (
                       <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {f.type === 'select' && f.key === 'namespace' && (
+                <Select value={values[f.key] || 'default'} onValueChange={(v) => set(f.key, v)}>
+                  <SelectTrigger className="h-8 border-zinc-700 bg-zinc-900 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-700">
+                    {namespaces.map((ns) => (
+                      <SelectItem key={ns.id} value={ns.name} className="text-xs font-mono">ns/{ns.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

@@ -19,6 +19,7 @@ const kindMeta: Record<string, { label: string; icon: typeof FileJson; color: st
  *  inspectable and editable right on the canvas. */
 export function CanvasRegistry() {
   const pods = useCluster((s) => s.pods)
+  const activeNamespace = useCluster((s) => s.activeNamespace)
   const services = useCluster((s) => s.services)
   const configMaps = useCluster((s) => s.configMaps)
   const secrets = useCluster((s) => s.secrets)
@@ -28,29 +29,31 @@ export function CanvasRegistry() {
   const setEditing = useCluster((s) => s.setEditing)
   const removeResource = useCluster((s) => s.removeResource)
 
+  const inNs = <T extends { namespace: string }>(list: T[]) => (activeNamespace === 'all' ? list : list.filter((r) => r.namespace === activeNamespace))
+
   const groups: { kind: ResourceKind; items: { id: string; name: string; sub: string }[] }[] = [
     {
       kind: 'service',
-      items: services.map((s) => {
+      items: inNs(services).map((s) => {
         const eps = serviceEndpoints(pods, s)
         return { id: s.id, name: s.name, sub: `${s.type} · ${eps.length} ep${s.nodePort ? ` · :${s.nodePort}` : ''}` }
       }),
     },
     {
       kind: 'configmap',
-      items: configMaps.map((c) => ({ id: c.id, name: c.name, sub: `${Object.keys(c.data).length} keys` })),
+      items: inNs(configMaps).map((c) => ({ id: c.id, name: c.name, sub: `${Object.keys(c.data).length} keys` })),
     },
     {
       kind: 'secret',
-      items: secrets.map((c) => ({ id: c.id, name: c.name, sub: `${Object.keys(c.data).length} keys` })),
+      items: inNs(secrets).map((c) => ({ id: c.id, name: c.name, sub: `${Object.keys(c.data).length} keys` })),
     },
     {
       kind: 'cronjob',
-      items: cronJobs.map((c) => ({ id: c.id, name: c.name, sub: `every ${c.schedule}s · ${c.completions} done` })),
+      items: inNs(cronJobs).map((c) => ({ id: c.id, name: c.name, sub: `every ${c.schedule}s · ${c.completions} done` })),
     },
     {
       kind: 'job',
-      items: jobs.map((j) => ({ id: j.id, name: j.name, sub: j.status })),
+      items: inNs(jobs).map((j) => ({ id: j.id, name: j.name, sub: j.status })),
     },
   ]
 

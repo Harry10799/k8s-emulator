@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine } from 'lucide-react'
+import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toaster } from '@/components/ui/sonner'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -14,6 +14,7 @@ import { ClusterCanvas } from '@/components/k8s/cluster-canvas'
 import { Palette } from '@/components/k8s/palette'
 import { Inspector } from '@/components/k8s/inspector'
 import { EditDialog } from '@/components/k8s/edit-dialog'
+import { NodeInternalsDialog } from '@/components/k8s/node-internals'
 import { EventFeed } from '@/components/k8s/event-feed'
 import { ResourceList } from '@/components/k8s/resource-list'
 
@@ -26,6 +27,9 @@ function Toolbar() {
   const setChaos = useCluster((s) => s.setChaos)
   const addNode = useCluster((s) => s.addNode)
   const reset = useCluster((s) => s.reset)
+  const namespaces = useCluster((s) => s.namespaces)
+  const activeNamespace = useCluster((s) => s.activeNamespace)
+  const setNamespace = useCluster((s) => s.setNamespace)
 
   return (
     <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2 shrink-0">
@@ -42,6 +46,21 @@ function Toolbar() {
           {running ? <Pause className="h-3.5 w-3.5 mr-1" /> : <Play className="h-3.5 w-3.5 mr-1" />}
           {running ? 'Pause' : 'Resume'}
         </Button>
+
+        <div className="flex items-center gap-1 text-zinc-500" title="Filter resources by namespace">
+          <Boxes className="h-3.5 w-3.5" />
+          <Select value={activeNamespace} onValueChange={(v) => setNamespace(v)}>
+            <SelectTrigger className="h-8 w-[110px] text-xs border-zinc-700 bg-zinc-900">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectItem value="all" className="text-xs font-mono">all namespaces</SelectItem>
+              {namespaces.map((ns) => (
+                <SelectItem key={ns.id} value={ns.name} className="text-xs font-mono">ns/{ns.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <div className="flex items-center gap-1.5 text-zinc-500">
           <Gauge className="h-3.5 w-3.5" />
@@ -104,6 +123,7 @@ function InspectorSheet() {
         </button>
       </SheetTrigger>
       <SheetContent side="right" className="w-80 border-zinc-800 bg-zinc-950 p-0 overflow-y-auto custom-scroll">
+        <SheetTitle className="sr-only">Inspector</SheetTitle>
         <Inspector />
       </SheetContent>
     </Sheet>
@@ -154,6 +174,7 @@ export default function Home() {
       </div>
       <InspectorSheet />
       <EditDialog />
+      <NodeInternalsDialog />
       <Toaster theme="dark" />
     </div>
   )

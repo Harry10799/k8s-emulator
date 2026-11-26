@@ -1,13 +1,13 @@
 'use client'
 
 import {
-  Package, Layers, Boxes, Flame, Network, FileJson, KeyRound, Clock, Briefcase, Copy, Server,
+  Package, Layers, Boxes, Flame, Network, FileJson, KeyRound, Clock, Briefcase, Copy, Server, Circle,
 } from 'lucide-react'
 import type { DropPayload } from '@/lib/cluster-store'
 
 const templates: (DropPayload & { title: string; desc: string; icon: typeof Package })[] = [
   {
-    kind: 'pod', title: 'pod · nginx', desc: '500m · 512Mi · stable', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0.02, name: 'nginx',
+    kind: 'pod', title: 'pod · nginx', desc: '500m · 512Mi · stable', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0, name: 'nginx',
     labels: { app: 'nginx' }, icon: Package,
   },
   {
@@ -15,19 +15,19 @@ const templates: (DropPayload & { title: string; desc: string; icon: typeof Pack
     labels: { app: 'crashy' }, icon: Flame,
   },
   {
-    kind: 'deployment', title: 'deployment · web', desc: '3 replicas · self-healing', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0.02, replicas: 3, name: 'web',
+    kind: 'deployment', title: 'deployment · web', desc: '3 replicas · self-healing', image: 'nginx:latest', cpuRequest: 500, memRequest: 512, crashRate: 0, replicas: 3, name: 'web',
     labels: { app: 'web' }, selector: { app: 'web' }, icon: Layers,
   },
   {
-    kind: 'replicaset', title: 'replicaset · rs', desc: '2 replicas · no rollout', image: 'redis:7', cpuRequest: 250, memRequest: 256, crashRate: 0.02, replicas: 2, name: 'cache',
+    kind: 'replicaset', title: 'replicaset · rs', desc: '2 replicas · no rollout', image: 'redis:7', cpuRequest: 250, memRequest: 256, crashRate: 0, replicas: 2, name: 'cache',
     labels: { app: 'cache' }, selector: { app: 'cache' }, icon: Copy,
   },
   {
-    kind: 'daemonset', title: 'daemonset · log agent', desc: 'one pod per node', image: 'fluentd:v1.16', cpuRequest: 100, memRequest: 128, crashRate: 0.02, name: 'log-agent',
+    kind: 'daemonset', title: 'daemonset · log agent', desc: 'one pod per node', image: 'fluentd:v1.16', cpuRequest: 100, memRequest: 128, crashRate: 0, name: 'log-agent',
     labels: { app: 'log-agent' }, selector: { app: 'log-agent' }, icon: Server,
   },
   {
-    kind: 'statefulset', title: 'statefulset · db', desc: 'web-0, web-1… ordered', image: 'postgres:16', cpuRequest: 500, memRequest: 512, crashRate: 0.02, replicas: 3, name: 'db',
+    kind: 'statefulset', title: 'statefulset · db', desc: 'web-0, web-1… ordered', image: 'postgres:16', cpuRequest: 500, memRequest: 512, crashRate: 0, replicas: 3, name: 'db',
     labels: { app: 'db' }, serviceName: 'db-headless', icon: Boxes,
   },
   {
@@ -53,6 +53,10 @@ const templates: (DropPayload & { title: string; desc: string; icon: typeof Pack
   {
     kind: 'job', title: 'job · migrate', desc: 'runs once → Succeeded', image: 'migrate:latest', cpuRequest: 100, memRequest: 128, duration: 6, name: 'migrate',
     icon: Briefcase,
+  },
+  {
+    kind: 'namespace', title: 'namespace · dev', desc: 'isolate resources · team=dev', name: 'dev',
+    labels: { team: 'dev' }, icon: Circle,
   },
 ]
 

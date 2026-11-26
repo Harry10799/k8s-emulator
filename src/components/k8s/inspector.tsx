@@ -76,6 +76,7 @@ export function Inspector() {
   const secrets = useCluster((s) => s.secrets)
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
+  const namespaces = useCluster((s) => s.namespaces)
   const crashPod = useCluster((s) => s.crashPod)
   const restartPod = useCluster((s) => s.restartPod)
   const scaleDeployment = useCluster((s) => s.scaleDeployment)
@@ -103,6 +104,7 @@ export function Inspector() {
           </div>
         </div>
         <InfoCard title="pod" rows={[
+          ['Namespace', pod.namespace],
           ['Image', pod.image],
           ['Node', node?.name ?? '<unscheduled>'],
           ['CPU', `${pod.cpuRequest}m`],
@@ -191,6 +193,7 @@ export function Inspector() {
           </div>
         </div>
         <InfoCard title="dep" rows={[
+          ['Namespace', dep.namespace],
           ['Image', dep.image],
           ['Selector', Object.entries(dep.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
           ['CPU / pod', `${dep.cpuRequest}m`],
@@ -233,6 +236,7 @@ export function Inspector() {
           </div>
         </div>
         <InfoCard title="rs" rows={[
+          ['Namespace', rs.namespace],
           ['Image', rs.image],
           ['Selector', Object.entries(rs.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
           ['Revision', `v${rs.revision}`],
@@ -271,6 +275,7 @@ export function Inspector() {
           <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-emerald-500/30 text-emerald-400 bg-emerald-500/10">{ready}/{workers.length} nodes covered</Badge>
         </div>
         <InfoCard title="ds" rows={[
+          ['Namespace', ds.namespace],
           ['Image', ds.image],
           ['Selector', Object.entries(ds.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
           ['CPU / pod', `${ds.cpuRequest}m`],
@@ -307,6 +312,7 @@ export function Inspector() {
           <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-emerald-500/30 text-emerald-400 bg-emerald-500/10">{ready}/{sts.replicas} ready</Badge>
         </div>
         <InfoCard title="sts" rows={[
+          ['Namespace', sts.namespace],
           ['Image', sts.image],
           ['Service', sts.serviceName],
           ['CPU / pod', `${sts.cpuRequest}m`],
@@ -346,6 +352,7 @@ export function Inspector() {
           </div>
         </div>
         <InfoCard title="svc" rows={[
+          ['Namespace', svc.namespace],
           ['ClusterIP', svc.clusterIP],
           ['Selector', Object.entries(svc.selector).map(([k, v]) => `${k}=${v}`).join(', ')],
           ['Port', `${svc.port} → ${svc.targetPort} (${svc.protocol})`],
@@ -381,6 +388,7 @@ export function Inspector() {
         <div>
           <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">{kind === 'configmap' ? 'ConfigMap' : 'Secret'} · inspect</div>
           <div className="font-mono text-sm text-zinc-100">{res.name}</div>
+          <div className="text-[10px] font-mono text-zinc-500 mt-0.5">ns/{res.namespace}</div>
         </div>
         <div className="rounded-lg border border-zinc-700 bg-black/40 p-2.5">
           {Object.entries(res.data).map(([k, v]) => (
@@ -419,6 +427,7 @@ export function Inspector() {
           <Badge variant="outline" className="mt-1.5 text-[10px] font-mono border-zinc-600 text-zinc-300">every {parseSched(cj.schedule)}s sim-time</Badge>
         </div>
         <InfoCard title="cj" rows={[
+          ['Namespace', cj.namespace],
           ['Schedule', cj.schedule],
           ['Job image', cj.image],
           ['Job runtime', `${cj.duration}s sim`],
@@ -454,6 +463,7 @@ export function Inspector() {
           <Badge variant="outline" className={`mt-1.5 text-[10px] font-mono ${job.status === 'Complete' ? 'border-emerald-500/30 text-emerald-400' : 'border-amber-500/30 text-amber-400'}`}>{job.status}</Badge>
         </div>
         <InfoCard title="job" rows={[
+          ['Namespace', job.namespace],
           ['Image', job.image],
           ['Runtime', `${job.duration}s sim`],
           ['Completions', '1/1'],
@@ -470,6 +480,45 @@ export function Inspector() {
               <span className={p.phase === 'Succeeded' ? 'text-emerald-400' : 'text-zinc-400'}>{p.phase}</span>
             </div>
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (kind === 'namespace') {
+    const ns = namespaces.find((n) => n.id === id)
+    if (!ns) return <ClusterSummary />
+    const nsPods = pods.filter((p) => p.namespace === ns.name)
+    const nsDeps = deployments.filter((d) => d.namespace === ns.name)
+    const nsSvcs = services.filter((s) => s.namespace === ns.name)
+    const nsCfg = configMaps.filter((c) => c.namespace === ns.name)
+    const nsSec = secrets.filter((s) => s.namespace === ns.name)
+    return (
+      <div className="p-3 space-y-3">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Namespace · inspect</div>
+          <div className="font-mono text-sm text-zinc-100">ns/{ns.name}</div>
+          <div className="mt-1.5 flex gap-1.5 flex-wrap">
+            <Badge variant="outline" className="text-[10px] font-mono border-sky-500/30 text-sky-400 bg-sky-500/10">Active</Badge>
+            {ns.name === 'default' && <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-400">system</Badge>}
+            <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-300">{nsPods.length} pods</Badge>
+          </div>
+        </div>
+        <InfoCard title="namespace" rows={[
+          ['Labels', Object.entries(ns.labels).map(([k, v]) => `${k}=${v}`).join(' ') || '—'],
+          ['Pods', String(nsPods.length)],
+          ['Deployments', String(nsDeps.length)],
+          ['Services', String(nsSvcs.length)],
+          ['ConfigMaps', String(nsCfg.length)],
+          ['Secrets', String(nsSec.length)],
+          ['Age', '—'],
+        ]} />
+        <div className="flex flex-wrap gap-2">
+          <EditBtn kind="namespace" id={ns.id} />
+          {ns.name !== 'default' && <DeleteBtn kind="namespace" id={ns.id} />}
+        </div>
+        <div className="text-[10px] text-zinc-600 leading-relaxed">
+          Namespaces isolate resources: quotas, RBAC scopes and names live per-namespace. Delete cascades to everything inside it — like <span className="font-mono text-zinc-400">kubectl delete ns</span>.
         </div>
       </div>
     )

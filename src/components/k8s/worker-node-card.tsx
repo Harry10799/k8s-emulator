@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Trash2, Cpu, MemoryStick, PencilLine } from 'lucide-react'
+import { Trash2, Cpu, MemoryStick, PencilLine, Boxes } from 'lucide-react'
 import { useCluster, type K8sNode, type Pod } from '@/lib/cluster-store'
 
 export interface WorkerNodeData extends Record<string, unknown> {
@@ -33,12 +33,17 @@ export function WorkerNodeCard({ data }: NodeProps) {
   const d = data as WorkerNodeData
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
+  const setInternalsNode = useCluster((s) => s.setInternalsNode)
   const removeNode = useCluster((s) => s.removeNode)
 
   return (
     <div
       className="w-[320px] rounded-xl border border-zinc-700 bg-zinc-900/95 shadow-lg p-3"
-      onDoubleClick={() => select(`node:${d.node.id}`)}
+      onDoubleClick={() => {
+        select(`node:${d.node.id}`)
+        setInternalsNode(d.node.id)
+      }}
+      title="double-click to see inside this node (kubelet · containerd · kube-proxy)"
     >
       <Handle type="target" position={Position.Top} className="!bg-emerald-500 !border-zinc-800 !w-2.5 !h-2.5" />
       <div className="flex items-center justify-between mb-2">
@@ -50,6 +55,17 @@ export function WorkerNodeCard({ data }: NodeProps) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            aria-label={`Inside ${d.node.name}`}
+            title="What's inside this node? (double-click)"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-sky-400 hover:bg-zinc-800"
+            onClick={(e) => {
+              e.stopPropagation()
+              setInternalsNode(d.node.id)
+            }}
+          >
+            <Boxes className="h-4 w-4" />
+          </button>
           <button
             aria-label={`Edit ${d.node.name}`}
             title="Edit node"
