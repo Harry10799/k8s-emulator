@@ -169,7 +169,10 @@ export function reconcileJobs(state: EngineState): void {
       const cron = values<CronJobResource>(state, "CronJob").find(item => item.metadata.uid === job.ownerReferences?.[0]?.uid);
       if (cron) {
         cron.status.active = cron.status.active.filter(key => key !== resourceKey(job) || job.status.active > 0);
-        if (!wasComplete && job.status.conditions.some(condition => condition.type === "Complete")) cron.status.lastSuccessfulTime = state.tick;
+        if (!wasComplete && job.status.conditions.some(condition => condition.type === "Complete")) {
+          cron.status.lastSuccessfulTime = state.tick;
+          cron.status.successfulJobs = (cron.status.successfulJobs ?? 0) + 1;
+        }
         putResource(state, cron);
       }
     }

@@ -193,7 +193,7 @@ export interface CronJobResource {
   kind: "CronJob";
   metadata: ObjectMetadata;
   spec: { schedule: string; suspend?: boolean; concurrencyPolicy?: "Allow" | "Forbid" | "Replace"; jobTemplate: Omit<JobResource, "metadata" | "status" | "ownerReferences">["spec"] };
-  status: { lastScheduleTick?: number; active: string[]; lastSuccessfulTime?: number };
+  status: { lastScheduleTick?: number; active: string[]; lastSuccessfulTime?: number; successfulJobs?: number };
 }
 
 export interface PersistentVolumeClaimResource {
