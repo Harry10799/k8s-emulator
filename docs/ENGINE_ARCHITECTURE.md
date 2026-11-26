@@ -17,9 +17,9 @@ step(state, rng) -> nextState
 
 ## Current simulation boundary
 
-This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The engine currently models Nodes, Pods, ReplicaSets, and Deployments. The Deployment controller retains revisioned ReplicaSets and performs readiness-gated rolling updates with surge/unavailable limits. The canvas adapter delegates Deployment desired-state decisions to this engine; the existing store continues to own Pod lifecycle and non-Deployment controllers.
+This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The engine currently models Nodes, Pods, ReplicaSets, and Deployments. The Deployment controller retains revisioned ReplicaSets and performs readiness-gated rolling updates with surge/unavailable limits. The canvas adapter delegates Deployment desired-state decisions to this engine; the persistent canvas runtime now delegates Pod scheduling and kubelet/container lifecycle to the engine; non-Deployment controllers remain in the store.
 
-The existing canvas and Zustand simulation remain in place while the engine is introduced and tested independently. UI integration is a follow-up migration, not silently mixed into this engine milestone.
+The canvas keeps its existing Zustand-facing data shape as a projection, while `engine/canvas-runtime.ts` retains one EngineState across ticks. Pod scheduling, image pulls, container lifecycle, probes, restarts and resource-pressure handling run in that persistent engine state. The remaining legacy controller loops (DaemonSet, StatefulSet, Job/CronJob, PVC, Service and related resources) are still scheduled for migration.
 
 ## Directory map
 
@@ -54,6 +54,6 @@ The resource-management stage classifies Pods as Guaranteed, Burstable, or BestE
 
 Container lifecycle and probe evaluation live in engine/kubelet.ts, separate from controller orchestration. Restart backoff is a container waiting state: after a container has started, a Pod remains Running while that container is in CrashLoopBackOff. Startup probe failures have their own StartupProbeFailed termination reason. The engine scheduler uses an in-place internal stage inside step(), avoiding a second full-state clone; the exported schedulePendingPods helper remains immutable for isolated callers.
 
-The canvas store is not yet a single-source-of-truth engine adapter. Its legacy Pod and non-Deployment controller loops remain active until the persistent EngineState migration is completed; the earlier phased-integration description should not be interpreted as full kubelet UI integration.
+The canvas now uses a persistent EngineState for Pod scheduling and kubelet lifecycle. The canvas store still owns the non-Deployment controller loops and projects engine Pod status into its existing UI model; the complete all-resource single-source-of-truth migration is not yet finished.
 
 \n## Image registry and deterministic failures\n\nThe kubelet consults a simulated image catalogue rather than interpreting image-name substrings. Nodes maintain independent image caches. A known image missing from a node cache enters ContainerCreating while its configured pull duration elapses; a missing registry image reports ErrImagePull and exponential ImagePullBackOff retries. The initial node cache includes a small set of common tutorial images so existing quick-start scenarios remain immediate. Container crash rates are consumed from the injected seeded random source, and the canvas chaos monkey now uses its per-tick seeded source instead of Math.random.\n

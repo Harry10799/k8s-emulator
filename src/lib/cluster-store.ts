@@ -5,6 +5,7 @@ import { createInitialState, schedulePendingPods } from '../../engine/engine'
 import { reconcileDeployments as reconcileDeploymentsEngine } from '../../engine/reconcile'
 import { createSeededRng } from '../../engine/rng'
 import type { NodeResource, PodResource } from '../../engine/types'
+import { advanceCanvasRuntime, resetCanvasRuntime } from '../../engine/canvas-runtime'
 
 export type PodPhase =
   | 'Pending'
@@ -483,83 +484,13 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
       const activeOf = (oid: string) => ownedBy(oid).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
 
-      // ---- bind pods that already have a node (DS requiredNode / manual placement) ----
-      for (const pod of s.pods) {
-        if (pod.phase === 'Pending' && (pod.nodeId || pod.requiredNode)) {
-          const target = pod.nodeId ?? pod.requiredNode
-          pod.nodeId = target
-          pod.phase = 'ContainerCreating'
-          pod.phaseTicks = 0
-          const host = s.nodes.find((n) => n.id === target)
-          logEvent(s, 'Normal', 'Scheduled', `${pod.name} assigned to ${host?.name ?? target}`, pod.name)
-          podLog(pod, t, `Assigned to ${host?.name ?? target}`)
-        }
+      // ---- persistent engine owns scheduling and kubelet/container lifecycle ----
+      const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng)
+      s.pods = runtime.pods
+      for (const event of runtime.events) {
+        s.events.unshift({ id: event.id, time: simTime(t), type: event.type, reason: event.reason, message: event.message, object: event.object })
       }
-
-      // ---- pure engine scheduling cycle for all unbound Pending pods ----
-      const scheduling = scheduleClusterWithEngine(s.pods, s.nodes, t)
-      for (const pod of s.pods) {
-        if (pod.phase !== 'Pending' || pod.nodeId) continue
-        const nodeId = scheduling.assignments.get(pod.id)
-        if (nodeId) {
-          const host = s.nodes.find((node) => node.id === nodeId)
-          pod.nodeId = nodeId
-          pod.phase = 'ContainerCreating'
-          pod.phaseTicks = 0
-          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${host?.name ?? nodeId}`, pod.name)
-          podLog(pod, t, `Assigned to ${host?.name ?? nodeId}`)
-        } else if (t % 4 === 0) {
-          logEvent(s, 'Warning', 'FailedScheduling', scheduling.failures.get(pod.id) ?? `0/${workers().length} nodes are available`, pod.name)
-        }
-      }
-      // ---- pod lifecycle ----
-      for (const pod of s.pods) {
-        pod.ageTicks += 1
-        pod.phaseTicks += 1
-        switch (pod.phase) {
-          case 'ContainerCreating':
-            if (pod.phaseTicks >= 3) {
-              pod.phase = 'Running'
-              pod.phaseTicks = 0
-              logEvent(s, 'Normal', 'Started', `Started container ${pod.image} in pod ${pod.name}`, pod.name)
-              podLog(pod, t, `Container started: ${pod.image}`)
-            }
-            break
-          case 'Running':
-            if (pod.completionTicks !== null) {
-              pod.completionTicks -= 1
-              if (pod.completionTicks <= 0) {
-                pod.phase = 'Succeeded'
-                pod.phaseTicks = 0
-                logEvent(s, 'Normal', 'Completed', `Pod ${pod.name} completed (job)`, pod.name)
-                podLog(pod, t, 'Job completed successfully')
-              }
-            } else if (tickRng.next() < pod.crashRate) {
-              pod.phase = 'CrashLoopBackOff'
-              pod.phaseTicks = 0
-              pod.restarts += 1
-              logEvent(s, 'Warning', 'BackOff', `Back-off restarting failed container in ${pod.name} (restart #${pod.restarts})`, pod.name)
-              podLog(pod, t, 'ERROR: container exited (code 137)')
-            }
-            break
-          case 'CrashLoopBackOff': {
-            const backoff = Math.min(2 ** Math.min(pod.restarts, 4), 16)
-            if (pod.phaseTicks >= backoff) {
-              pod.phase = 'ContainerCreating'
-              pod.phaseTicks = 0
-              logEvent(s, 'Normal', 'Pulling', `Restarting container ${pod.image} in ${pod.name}`, pod.name)
-            }
-            break
-          }
-          case 'Terminating':
-            if (pod.phaseTicks >= 2) {
-              // pod will be cleaned up below
-            }
-            break
-          default:
-            break
-        }
-      }
+      if (s.events.length > 100) s.events.length = 100
 
       // ---- cleanup finished pods ----
       s.pods = s.pods.filter((p) => {
@@ -1133,7 +1064,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       return s
     }),
 
-  reset: () =>
+  reset: () => {
+    resetCanvasRuntime()
     set({
       nodes: [
         { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
@@ -1159,7 +1091,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       tickCount: 0,
       selected: null,
       editing: null,
-    }),
+    })
+  },
 }))
 
 function rand2(min: number, max: number): number {

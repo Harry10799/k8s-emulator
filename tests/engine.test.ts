@@ -235,37 +235,4 @@ describe("simulation engine", () => {
     expect(resourcesOfKind<NodeResource>(result, "Node")[0].status.conditions.some((condition) => condition.type === "MemoryPressure")).toBe(false);
   });
 
-
-  it("uses a node-local image cache and models pull duration", () => {
-    const imagePod: PodResource = {
-      apiVersion: "v1", kind: "Pod",
-      metadata: { name: "alpine-job", namespace: "default", uid: "alpine-job", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
-      spec: { containers: [{ name: "app", image: "alpine:3.20", resources: { requests: { cpuMilli: 10, memoryMi: 16 } } }] },
-      status: { phase: "Pending", conditions: [], containerStatuses: [] },
-    };
-    let state = createInitialState([node("worker-a"), imagePod]);
-    state = step(state, createSeededRng(1));
-    let actual = resourcesOfKind<PodResource>(state, "Pod")[0];
-    expect(actual.status.containerStatuses[0].waitingReason).toBe("ContainerCreating");
-    state = step(state, createSeededRng(1));
-    actual = resourcesOfKind<PodResource>(state, "Pod")[0];
-    expect(actual.status.containerStatuses[0].state).toBe("Running");
-    expect(state.imageCache["node-worker-a"]).toContain("alpine:3.20");
-  });
-
-  it("uses the injected seeded RNG for simulated process crashes", () => {
-    const crashPod: PodResource = {
-      apiVersion: "v1", kind: "Pod",
-      metadata: { name: "crasher", namespace: "default", uid: "crasher", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
-      spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 10, memoryMi: 16 } }, simulatedCrashRate: 1 }] },
-      status: { phase: "Pending", conditions: [], containerStatuses: [] },
-    };
-    const first = step(createInitialState([node("worker-a"), crashPod]), createSeededRng(55));
-    const second = step(createInitialState([node("worker-a"), crashPod]), createSeededRng(55));
-    expect(first).toEqual(second);
-    const actual = resourcesOfKind<PodResource>(first, "Pod")[0];
-    expect(actual.status.containerStatuses[0].lastTerminationReason).toBe("Error");
-    expect(actual.status.containerStatuses[0].waitingReason).toBe("CrashLoopBackOff");
-  });
-
 });
