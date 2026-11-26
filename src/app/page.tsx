@@ -105,10 +105,20 @@ function InspectorSheet() {
   const [open, setOpen] = useState(false)
   const selected = useCluster((s) => s.selected)
 
-  // auto-open when a resource gets selected on a small screen
+  // auto-open ONLY on small screens; on lg+ the side inspector is already
+  // visible and an open sheet would block the canvas with its overlay
   useEffect(() => {
-    if (selected) setOpen(true)
+    const small = !window.matchMedia('(min-width: 1024px)').matches
+    setOpen(small && !!selected)
   }, [selected])
+
+  // close when growing to lg (overlay would block the canvas)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const onChange = () => { if (mq.matches) setOpen(false) }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

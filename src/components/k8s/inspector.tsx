@@ -76,6 +76,8 @@ export function Inspector() {
   const secrets = useCluster((s) => s.secrets)
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
+  const pvcs = useCluster((s) => s.pvcs)
+  const ingresses = useCluster((s) => s.ingresses)
   const namespaces = useCluster((s) => s.namespaces)
   const crashPod = useCluster((s) => s.crashPod)
   const restartPod = useCluster((s) => s.restartPod)
@@ -480,6 +482,71 @@ export function Inspector() {
               <span className={p.phase === 'Succeeded' ? 'text-emerald-400' : 'text-zinc-400'}>{p.phase}</span>
             </div>
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (kind === 'pvc') {
+    const pvc = pvcs.find((c) => c.id === id)
+    if (!pvc) return <ClusterSummary />
+    const mounters = pods.filter((p) => p.mountedPvc === pvc.name)
+    return (
+      <div className="p-3 space-y-3">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">PersistentVolumeClaim · inspect</div>
+          <div className="font-mono text-sm text-zinc-100">{pvc.name}</div>
+          <div className="mt-1.5 flex gap-1.5 flex-wrap">
+            <Badge variant="outline" className={`text-[10px] font-mono ${pvc.status === 'Bound' ? 'border-pink-500/30 text-pink-400 bg-pink-500/10' : 'border-amber-500/30 text-amber-400'}`}>{pvc.status}</Badge>
+            <Badge variant="outline" className="text-[10px] font-mono border-zinc-600 text-zinc-300">{pvc.sizeGi}Gi</Badge>
+          </div>
+        </div>
+        <InfoCard title="pvc" rows={[
+          ['Namespace', pvc.namespace],
+          ['Size', `${pvc.sizeGi}Gi`],
+          ['StorageClass', pvc.storageClass],
+          ['Status', pvc.status],
+          ['Mounted by', mounters.map((p) => p.name).join(', ') || '—'],
+        ]} />
+        <div className="flex flex-wrap gap-2">
+          <EditBtn kind="pvc" id={pvc.id} />
+          <DeleteBtn kind="pvc" id={pvc.id} />
+        </div>
+        <div className="text-[10px] text-zinc-600 leading-relaxed">
+          A PVC is a storage request: the PV controller binds it to a matching Volume. StatefulSet pods mount <span className="font-mono text-zinc-400">data-&lt;pod&gt;</span> claims — the volume survives pod rescheduling.
+        </div>
+      </div>
+    )
+  }
+
+  if (kind === 'ingress') {
+    const ing = ingresses.find((c) => c.id === id)
+    if (!ing) return <ClusterSummary />
+    const svc = services.find((s) => s.name === ing.serviceName && s.namespace === ing.namespace)
+    const eps = svc ? serviceEndpoints(pods, svc) : []
+    return (
+      <div className="p-3 space-y-3">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Ingress · inspect</div>
+          <div className="font-mono text-sm text-zinc-100">{ing.name}</div>
+          <div className="mt-1.5 flex gap-1.5 flex-wrap">
+            <Badge variant="outline" className="text-[10px] font-mono border-rose-500/30 text-rose-400 bg-rose-500/10">http://{ing.host}{ing.path}</Badge>
+            {svc ? <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-400">rule active</Badge> : <Badge variant="outline" className="text-[10px] font-mono border-amber-500/30 text-amber-400">backend missing</Badge>}
+          </div>
+        </div>
+        <InfoCard title="ingress" rows={[
+          ['Namespace', ing.namespace],
+          ['Host', ing.host],
+          ['Path', ing.path],
+          ['Backend service', svc ? `${svc.name} (${svc.type}, ${svc.clusterIP})` : `${ing.serviceName} — not found`],
+          ['Backend endpoints', svc ? `${eps.length} pod(s)` : '—'],
+        ]} />
+        <div className="flex flex-wrap gap-2">
+          <EditBtn kind="ingress" id={ing.id} />
+          <DeleteBtn kind="ingress" id={ing.id} />
+        </div>
+        <div className="text-[10px] text-zinc-600 leading-relaxed">
+          Ingress routes external HTTP traffic by host/path to a Service. Create the backend Service first (selector matching your pods) — the topology view shows the routing edge once it exists.
         </div>
       </div>
     )

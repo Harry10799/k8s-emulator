@@ -58,6 +58,7 @@ const fields: Record<ResourceKind, Field[]> = {
     { key: 'image', label: 'Image', type: 'text' },
     { key: 'replicas', label: 'Replicas (ordinals)', type: 'number' },
     { key: 'serviceName', label: 'Headless service', type: 'text' },
+    { key: 'storageGi', label: 'Volume claim / pod (Gi)', type: 'number', hint: '0 = no PVCs; new ordinals get data-<pod> claims' },
     { key: 'cpuRequest', label: 'CPU / pod (m)', type: 'number' },
     { key: 'memRequest', label: 'Mem / pod (Mi)', type: 'number' },
     { key: 'labels', label: 'Labels', type: 'labels' },
@@ -95,6 +96,17 @@ const fields: Record<ResourceKind, Field[]> = {
     { key: 'cpuCapacity', label: 'CPU capacity (m)', type: 'number' },
     { key: 'memCapacity', label: 'Memory capacity (Mi)', type: 'number' },
   ],
+  pvc: [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'sizeGi', label: 'Size (Gi)', type: 'number' },
+    { key: 'storageClass', label: 'StorageClass', type: 'text', hint: 'e.g. standard, fast-ssd' },
+  ],
+  ingress: [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'host', label: 'Host', type: 'text', hint: 'app.example.com' },
+    { key: 'path', label: 'Path', type: 'text', hint: '/' },
+    { key: 'serviceName', label: 'Routes to service', type: 'text', hint: 'backend Service name' },
+  ],
   namespace: [
     { key: 'name', label: 'Name', type: 'text' },
     { key: 'labels', label: 'Labels', type: 'labels', hint: 'team=dev, env=prod' },
@@ -102,7 +114,7 @@ const fields: Record<ResourceKind, Field[]> = {
 }
 
 // every namespaced kind gets a namespace select
-for (const k of ['pod', 'deployment', 'replicaset', 'daemonset', 'statefulset', 'service', 'configmap', 'secret', 'cronjob', 'job'] as ResourceKind[]) {
+for (const k of ['pod', 'deployment', 'replicaset', 'daemonset', 'statefulset', 'service', 'configmap', 'secret', 'cronjob', 'job', 'pvc', 'ingress'] as ResourceKind[]) {
   fields[k]?.splice(1, 0, { key: 'namespace', label: 'Namespace', type: 'select' })
 }
 
@@ -137,6 +149,7 @@ const kindLabel: Record<string, string> = {
   pod: 'Pod', deployment: 'Deployment', replicaset: 'ReplicaSet', daemonset: 'DaemonSet',
   statefulset: 'StatefulSet', service: 'Service', configmap: 'ConfigMap', secret: 'Secret',
   cronjob: 'CronJob', job: 'Job', node: 'Node', namespace: 'Namespace',
+  pvc: 'PersistentVolumeClaim', ingress: 'Ingress',
 }
 
 export function EditDialog() {
@@ -171,6 +184,8 @@ function EditForm({ editing }: { editing: string }) {
       case 'job': res = st.jobs.find((j) => j.id === id) as unknown as Record<string, unknown>; break
       case 'node': res = st.nodes.find((n) => n.id === id) as unknown as Record<string, unknown>; break
       case 'namespace': res = st.namespaces.find((n) => n.id === id) as unknown as Record<string, unknown>; break
+      case 'pvc': res = st.pvcs.find((c) => c.id === id) as unknown as Record<string, unknown>; break
+      case 'ingress': res = st.ingresses.find((c) => c.id === id) as unknown as Record<string, unknown>; break
       default: res = undefined
     }
     const init: Record<string, string> = {}

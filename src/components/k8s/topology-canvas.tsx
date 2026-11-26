@@ -25,6 +25,8 @@ import {
   KeyRound,
   Clock,
   Briefcase,
+  HardDrive,
+  Globe,
   type LucideIcon,
 } from 'lucide-react'
 import { useCluster, selectorMatches, type Labels } from '@/lib/cluster-store'
@@ -61,16 +63,12 @@ const PHASE_DOT: Record<string, string> = {
 
 function TopoCard({ data }: NodeProps<TopoCardNode>) {
   const selected = useCluster((s) => s.selected)
-  const select = useCluster((s) => s.select)
-  const setEditing = useCluster((s) => s.setEditing)
   const Icon = data.icon
   const isSel = selected === data.selectionId
   return (
     <div
-      onClick={() => select(data.selectionId)}
-      onDoubleClick={() => setEditing(data.selectionId)}
       title="click to inspect · double-click to edit"
-      className={`group w-[190px] cursor-pointer rounded-lg border bg-zinc-900/95 px-2.5 py-2 shadow-md transition-colors ${
+      className={`group w-[190px] rounded-lg border bg-zinc-900/95 px-2.5 py-2 shadow-md transition-colors ${
         isSel ? 'border-emerald-500 ring-1 ring-emerald-500/40' : 'border-zinc-700 hover:border-zinc-500'
       } ${data.dim ? 'opacity-40' : ''}`}
     >
@@ -121,9 +119,13 @@ export function TopologyCanvas() {
   const secrets = useCluster((s) => s.secrets)
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
+  const pvcs = useCluster((s) => s.pvcs)
+  const ingresses = useCluster((s) => s.ingresses)
   const namespaces = useCluster((s) => s.namespaces)
   const activeNamespace = useCluster((s) => s.activeNamespace)
   const running = useCluster((s) => s.running)
+  const select = useCluster((s) => s.select)
+  const setEditing = useCluster((s) => s.setEditing)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
     const visibleNs = namespaces.filter((n) => activeNamespace === 'all' || n.name === activeNamespace)
@@ -143,6 +145,8 @@ export function TopologyCanvas() {
     const cmStyle = { stroke: '#fbbf24', strokeWidth: 1.5, strokeDasharray: '6 3' }
     const secStyle = { stroke: '#e879f9', strokeWidth: 1.5, strokeDasharray: '6 3' }
     const cjStyle = { stroke: '#a78bfa', strokeWidth: 1.5 }
+    const pvcStyle = { stroke: '#f472b6', strokeWidth: 1.5, strokeDasharray: '2 4' }
+    const ingStyle = { stroke: '#fb7185', strokeWidth: 2 }
 
     for (const ns of visibleNs) {
       const nsPods = pods.filter((p) => p.namespace === ns.name)
@@ -161,9 +165,21 @@ export function TopologyCanvas() {
       const nsSecs = secrets.filter((c) => c.namespace === ns.name)
       const nsCjs = cronJobs.filter((c) => c.namespace === ns.name)
       const nsJobs = jobs.filter((j) => j.namespace === ns.name)
+      const nsPvcs = pvcs.filter((c) => c.namespace === ns.name)
+      const nsIngs = ingresses.filter((c) => c.namespace === ns.name)
 
-      // providers: services → configmaps → secrets
+      // providers: ingress → services → pvcs → configmaps → secrets
       const prov = [
+        ...nsIngs.map((g) => ({
+          selectionId: sid('ingress', g.id),
+          kind: 'ingress',
+          name: g.name,
+          sub: `${g.host}${g.path}`,
+          icon: Globe as LucideIcon,
+          color: '#fb7185',
+          dot: null as string | null,
+          dim: false,
+        })),
         ...nsSvcs.map((v) => ({
           selectionId: sid('service', v.id),
           kind: 'service',
@@ -182,6 +198,16 @@ export function TopologyCanvas() {
           icon: FileJson as LucideIcon,
           color: '#fbbf24',
           dot: null as string | null,
+          dim: false,
+        })),
+        ...nsPvcs.map((c) => ({
+          selectionId: sid('pvc', c.id),
+          kind: 'pvc',
+          name: c.name,
+          sub: `${c.sizeGi}Gi · ${c.status}`,
+          icon: HardDrive as LucideIcon,
+          color: '#f472b6',
+          dot: c.status === 'Bound' ? '#f472b6' : '#fbbf24',
           dim: false,
         })),
         ...nsSecs.map((c) => ({
@@ -288,7 +314,7 @@ export function TopologyCanvas() {
             type: 'topoCard',
             position: { x: col, y: cursorY + i * (NH + VGAP) },
             data: d,
-            selectable: false,
+            selectable: true,
             draggable: false,
           } as TopoCardNode)
         })
@@ -356,6 +382,20 @@ export function TopologyCanvas() {
           edges.push({ id: `e-sec-${c.id}-${p.id}`, source: nid('secret', c.id), target: nid('pod', p.id), style: secStyle })
         }
       }
+      // pvc → pod it is mounted by (statefulset volumeClaimTemplate)
+      for (const c of nsPvcs) {
+        const mounters = nsPods.filter((p) => p.mountedPvc === c.name)
+        for (const p of mounters) {
+          edges.push({ id: `e-pvc-${c.id}-${p.id}`, source: nid('pvc', c.id), target: nid('pod', p.id), style: pvcStyle })
+        }
+      }
+      // ingress → service (routing rule)
+      for (const g of nsIngs) {
+        const svc = nsSvcs.find((v) => v.name === g.serviceName)
+        if (svc) {
+          edges.push({ id: `e-ing-${g.id}-${svc.id}`, source: nid('ingress', g.id), target: nid('service', svc.id), style: ingStyle, animated: running })
+        }
+      }
 
       frames.push({
         id: `t-frame-${ns.id}`,
@@ -371,7 +411,7 @@ export function TopologyCanvas() {
     }
 
     return { flowNodes: [...frames, ...cards], flowEdges: edges, total: totalRes }
-  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, namespaces, activeNamespace, running])
+  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running])
 
   return (
     <div className="relative h-full w-full bg-zinc-950">
@@ -379,6 +419,14 @@ export function TopologyCanvas() {
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
+        onNodeClick={(_, node) => {
+          if (node.type === 'topoCard') select((node.data as TopoCardData).selectionId)
+        }}
+        onNodeDoubleClick={(_, node) => {
+          if (node.type === 'topoCard') setEditing((node.data as TopoCardData).selectionId)
+        }}
+        onPaneClick={() => select(null)}
+        zoomOnDoubleClick={false}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.15}
@@ -414,6 +462,8 @@ export function TopologyCanvas() {
           { style: '#fbbf24', dash: true, label: 'env from ConfigMap' },
           { style: '#e879f9', dash: true, label: 'env from Secret' },
           { style: '#a78bfa', dash: false, label: 'triggers (cronjob)' },
+          { style: '#f472b6', dash: true, label: 'mounts PVC (statefulset)' },
+          { style: '#fb7185', dash: false, label: 'routes to service (ingress)' },
         ].map((l) => (
           <div key={l.label} className="flex items-center gap-2 py-0.5">
             <span

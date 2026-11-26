@@ -15,6 +15,7 @@ export type Labels = Record<string, string>
 export type ResourceKind =
   | 'pod' | 'deployment' | 'replicaset' | 'daemonset' | 'statefulset'
   | 'service' | 'configmap' | 'secret' | 'cronjob' | 'job' | 'node' | 'namespace'
+  | 'pvc' | 'ingress'
 
 export interface K8sNode {
   id: string
@@ -53,6 +54,7 @@ export interface Pod {
   ports: number[]
   logs: string[]
   nodeId: string | null
+  mountedPvc: string | null // statefulset volumeClaimTemplate PVC name
 }
 
 export interface ReplicaSet {
@@ -108,6 +110,7 @@ export interface StatefulSet {
   cpuRequest: number
   memRequest: number
   crashRate: number
+  storageGi: number // volumeClaimTemplate size; 0 = no claims
 }
 
 export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer'
@@ -139,6 +142,25 @@ export interface Secret {
   name: string
   namespace: string
   data: Record<string, string>
+}
+
+export interface Pvc {
+  id: string
+  name: string
+  namespace: string
+  sizeGi: number
+  storageClass: string
+  status: 'Pending' | 'Bound'
+  createdTick: number
+}
+
+export interface Ingress {
+  id: string
+  name: string
+  namespace: string
+  host: string
+  path: string
+  serviceName: string
 }
 
 export interface CronJob {
@@ -211,6 +233,8 @@ export interface ClusterState {
   secrets: Secret[]
   cronJobs: CronJob[]
   jobs: Job[]
+  pvcs: Pvc[]
+  ingresses: Ingress[]
   namespaces: Namespace[]
   activeNamespace: string // 'all' or a namespace name
   internalsNode: SelectionId // node whose internals dialog is open
@@ -307,6 +331,7 @@ function basePod(over: Partial<Pod>): Pod {
     envSecret: null,
     ports: [],
     logs: [],
+    mountedPvc: null,
     ...over,
   }
 }
@@ -328,6 +353,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
   secrets: [],
   cronJobs: [],
   jobs: [],
+  pvcs: [],
+  ingresses: [],
   namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
   activeNamespace: 'all',
   internalsNode: null,
@@ -354,6 +381,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
         secrets: state.secrets.map((d) => ({ ...d })),
         cronJobs: state.cronJobs.map((d) => ({ ...d })),
         jobs: state.jobs.map((d) => ({ ...d })),
+        pvcs: state.pvcs.map((d) => ({ ...d })),
+        ingresses: state.ingresses.map((d) => ({ ...d })),
         events: [...state.events],
       }
       s.tickCount = state.tickCount + 1
@@ -588,6 +617,12 @@ export const useCluster = create<ClusterState>((set, get) => ({
               if (!lp || lp.phase !== 'Running') lower.push(j)
             }
             if (lower.length > 0) continue
+            // volumeClaimTemplate: one PVC per ordinal pod (data-<pod>), like real k8s
+            const pvcName = `data-${name}`
+            if (sts.storageGi > 0 && !s.pvcs.some((v) => v.name === pvcName && v.namespace === sts.namespace)) {
+              s.pvcs = [...s.pvcs, { id: uid('pvc'), name: pvcName, namespace: sts.namespace, sizeGi: sts.storageGi, storageClass: 'standard', status: 'Pending', createdTick: t }]
+              logEvent(s, 'Normal', 'Provisioning', `PersistentVolumeClaim ${pvcName} (${sts.storageGi}Gi) provisioned for pod ${name}`, sts.name)
+            }
             s.pods.push(
               basePod({
                 name,
@@ -599,6 +634,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
                 cpuRequest: sts.cpuRequest,
                 memRequest: sts.memRequest,
                 crashRate: sts.crashRate,
+                mountedPvc: sts.storageGi > 0 ? pvcName : null,
               }) as never
             )
             logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${sts.name} created ${name} (ordinal ${i})`, sts.name)
@@ -673,6 +709,14 @@ export const useCluster = create<ClusterState>((set, get) => ({
       }
       // GC completed jobs older than 30 ticks
       s.jobs = s.jobs.filter((j) => !(j.status === 'Complete' && t - j.createdTick > 30))
+
+      // ---- PVC binding (PV controller) ----
+      for (const pvc of s.pvcs) {
+        if (pvc.status === 'Pending' && t - pvc.createdTick >= 3) {
+          pvc.status = 'Bound'
+          logEvent(s, 'Normal', 'Bound', `PersistentVolumeClaim ${pvc.name} bound to PV pv-${rand(4)} (${pvc.sizeGi}Gi ${pvc.storageClass})`, pvc.name)
+        }
+      }
 
       // ---- service LB ip assignment ----
       for (const svc of s.services) {
@@ -760,8 +804,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
           logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${name} created — one pod per node`, name)
           break
         case 'statefulset':
-          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0 }]
-          logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
+          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, storageGi: (payload.storageGi as number) ?? 1 }]
+          logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${name} created with ${payload.replicas ?? 3} replica(s)${(payload.storageGi as number) ?? 1 > 0 ? `, volumeClaimTemplate ${(payload.storageGi as number) ?? 1}Gi each` : ''}`, name)
           break
         case 'service': {
           const type = (payload.serviceType as ServiceType) ?? 'ClusterIP'
@@ -787,6 +831,18 @@ export const useCluster = create<ClusterState>((set, get) => ({
           s.jobs = [...state.jobs, job]
           s.pods = [...state.pods, basePod({ name: `${name}-${rand(5)}`, namespace: (payload.namespace as string) ?? 'default', labels: { job: name }, ownerId: job.id, ownerKind: 'job', image: job.image, cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: 0, completionTicks: job.duration }) as never]
           logEvent(s, 'Normal', 'Created', `Job ${name} created — runs for ${job.duration}s sim-time`, name)
+          break
+        }
+        case 'pvc': {
+          const pvc: Pvc = { id: uid('pvc'), name, namespace: (payload.namespace as string) ?? 'default', sizeGi: (payload.sizeGi as number) ?? 1, storageClass: (payload.storageClass as string) ?? 'standard', status: 'Pending', createdTick: state.tickCount }
+          s.pvcs = [...state.pvcs, pvc]
+          logEvent(s, 'Normal', 'Created', `PersistentVolumeClaim ${name} (${pvc.sizeGi}Gi) created — waiting for a Volume to bind`, name)
+          break
+        }
+        case 'ingress': {
+          const ing: Ingress = { id: uid('ing'), name, namespace: (payload.namespace as string) ?? 'default', host: (payload.host as string) ?? `${name}.example.com`, path: (payload.path as string) ?? '/', serviceName: (payload.serviceName as string) ?? 'web-svc' }
+          s.ingresses = [...state.ingresses, ing]
+          logEvent(s, 'Normal', 'Created', `Ingress ${name} created — http://${ing.host}${ing.path} → service ${ing.serviceName}`, name)
           break
         }
         case 'namespace': {
@@ -876,6 +932,14 @@ export const useCluster = create<ClusterState>((set, get) => ({
           s.cronJobs = state.cronJobs.map((c) => (c.id === id ? ({ ...c, ...patch } as CronJob) : c))
           logEvent(s, 'Normal', 'Updated', `CronJob ${name || id} updated (schedule ${(patch.schedule as string) ?? ''})`, name)
           break
+        case 'pvc':
+          s.pvcs = state.pvcs.map((c) => (c.id === id ? ({ ...c, ...patch } as Pvc) : c))
+          logEvent(s, 'Normal', 'Updated', `PersistentVolumeClaim ${name || id} updated`, name)
+          break
+        case 'ingress':
+          s.ingresses = state.ingresses.map((c) => (c.id === id ? ({ ...c, ...patch } as Ingress) : c))
+          logEvent(s, 'Normal', 'Updated', `Ingress ${name || id} updated — ${(patch.host as string) ?? ''}${(patch.path as string) ?? ''} → ${(patch.serviceName as string) ?? ''}`, name)
+          break
         case 'job':
           s.jobs = state.jobs.map((j) => (j.id === id ? ({ ...j, ...patch } as Job) : j))
           break
@@ -964,6 +1028,14 @@ export const useCluster = create<ClusterState>((set, get) => ({
           drop((p) => p.ownerId === id)
           logEvent(s, 'Normal', 'Deleting', `Job deleted`, id)
           break
+        case 'pvc':
+          s.pvcs = state.pvcs.filter((c) => c.id !== id)
+          logEvent(s, 'Normal', 'Deleting', `PersistentVolumeClaim deleted`, id)
+          break
+        case 'ingress':
+          s.ingresses = state.ingresses.filter((c) => c.id !== id)
+          logEvent(s, 'Normal', 'Deleting', `Ingress deleted`, id)
+          break
         case 'namespace': {
           const ns = state.namespaces.find((n) => n.id === id)
           if (!ns) return state
@@ -982,6 +1054,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
           s.secrets = state.secrets.filter((c) => c.namespace !== ns.name)
           s.cronJobs = state.cronJobs.filter((c) => c.namespace !== ns.name)
           s.jobs = state.jobs.filter((j) => j.namespace !== ns.name)
+          s.pvcs = state.pvcs.filter((c) => c.namespace !== ns.name)
+          s.ingresses = state.ingresses.filter((c) => c.namespace !== ns.name)
           drop((p) => p.namespace === ns.name)
           if (state.activeNamespace === ns.name) s.activeNamespace = 'all'
           logEvent(s, 'Warning', 'NamespaceTerminating', `Namespace ${ns.name} deleted — all resources inside it were terminated too`, ns.name)
@@ -1055,6 +1129,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       secrets: [],
       cronJobs: [],
       jobs: [],
+      pvcs: [],
+      ingresses: [],
       namespaces: [{ id: 'ns-default', name: 'default', labels: { 'kubernetes.io/metadata.name': 'default' } }],
       activeNamespace: 'all',
       internalsNode: null,

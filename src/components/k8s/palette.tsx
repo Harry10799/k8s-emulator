@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Package, Layers, Boxes, Flame, Network, FileJson, KeyRound, Clock, Briefcase, Copy, Server, Circle,
+  Package, Layers, Boxes, Flame, Network, FileJson, KeyRound, Clock, Briefcase, Copy, Server, Circle, HardDrive, Globe,
 } from 'lucide-react'
 import type { DropPayload } from '@/lib/cluster-store'
 
@@ -27,8 +27,14 @@ const templates: (DropPayload & { title: string; desc: string; icon: typeof Pack
     labels: { app: 'log-agent' }, selector: { app: 'log-agent' }, icon: Server,
   },
   {
-    kind: 'statefulset', title: 'statefulset · db', desc: 'web-0, web-1… ordered', image: 'postgres:16', cpuRequest: 500, memRequest: 512, crashRate: 0, replicas: 3, name: 'db',
+    kind: 'statefulset', title: 'statefulset · db', desc: 'web-0, web-1… ordered · 1Gi PVC each', image: 'postgres:16', cpuRequest: 500, memRequest: 512, crashRate: 0, replicas: 3, storageGi: 1, name: 'db',
     labels: { app: 'db' }, serviceName: 'db-headless', icon: Boxes,
+  },
+  {
+    kind: 'pvc', title: 'pvc · data claim', desc: '1Gi · storageClass standard', name: 'data-claim', sizeGi: 1, storageClass: 'standard', icon: HardDrive,
+  },
+  {
+    kind: 'ingress', title: 'ingress · host routing', desc: 'app.example.com → web-svc', name: 'app', host: 'app.example.com', path: '/', serviceName: 'web-svc', icon: Globe,
   },
   {
     kind: 'service', title: 'service · ClusterIP', desc: 'selector: app=web', serviceType: 'ClusterIP', port: 80, targetPort: 8080, name: 'web-svc',

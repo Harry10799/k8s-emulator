@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2, PencilLine, Circle,
+  Package, Layers, Copy, Server, Boxes, Network, FileJson, KeyRound, Clock, Briefcase, CheckCircle2, PencilLine, Circle, HardDrive, Globe,
 } from 'lucide-react'
 import { useCluster, serviceEndpoints, type ResourceKind } from '@/lib/cluster-store'
 
@@ -16,6 +16,8 @@ const kindMeta: Record<string, { label: string; icon: typeof Package; short: str
   secret: { label: 'Secrets', icon: KeyRound, short: 'secret' },
   cronjob: { label: 'CronJobs', icon: Clock, short: 'cj' },
   job: { label: 'Jobs', icon: Briefcase, short: 'job' },
+  pvc: { label: 'Volumes', icon: HardDrive, short: 'pvc' },
+  ingress: { label: 'Ingresses', icon: Globe, short: 'ing' },
 }
 
 export function ResourceList() {
@@ -33,6 +35,8 @@ export function ResourceList() {
   const secrets = useCluster((s) => s.secrets)
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
+  const pvcs = useCluster((s) => s.pvcs)
+  const ingresses = useCluster((s) => s.ingresses)
 
   const inNs = <T extends { namespace: string }>(list: T[]) => (activeNamespace === 'all' ? list : list.filter((r) => r.namespace === activeNamespace))
 
@@ -100,6 +104,14 @@ export function ResourceList() {
     {
       kind: 'job',
       items: inNs(jobs).map((j) => ({ id: j.id, name: j.name, status: j.status, extra: j.image })),
+    },
+    {
+      kind: 'pvc',
+      items: inNs(pvcs).map((c) => ({ id: c.id, name: c.name, status: c.status, extra: `${c.sizeGi}Gi · ${c.storageClass}` })),
+    },
+    {
+      kind: 'ingress',
+      items: inNs(ingresses).map((g) => ({ id: g.id, name: g.name, status: g.host, extra: `${g.path} → ${g.serviceName}` })),
     },
   ]
 

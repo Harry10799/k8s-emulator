@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Network, FileJson, KeyRound, Clock, Briefcase, PencilLine, Trash2,
+  Network, FileJson, KeyRound, Clock, Briefcase, PencilLine, Trash2, HardDrive, Globe,
 } from 'lucide-react'
 import { useCluster, serviceEndpoints, type ResourceKind } from '@/lib/cluster-store'
 
@@ -11,6 +11,8 @@ const kindMeta: Record<string, { label: string; icon: typeof FileJson; color: st
   secret: { label: 'Secrets', icon: KeyRound, color: 'text-fuchsia-400' },
   cronjob: { label: 'CronJobs', icon: Clock, color: 'text-violet-400' },
   job: { label: 'Jobs', icon: Briefcase, color: 'text-teal-400' },
+  pvc: { label: 'Volumes', icon: HardDrive, color: 'text-pink-400' },
+  ingress: { label: 'Ingresses', icon: Globe, color: 'text-rose-400' },
 }
 
 /** Floating panel on the canvas showing cluster-level resources that do not
@@ -25,6 +27,8 @@ export function CanvasRegistry() {
   const secrets = useCluster((s) => s.secrets)
   const cronJobs = useCluster((s) => s.cronJobs)
   const jobs = useCluster((s) => s.jobs)
+  const pvcs = useCluster((s) => s.pvcs)
+  const ingresses = useCluster((s) => s.ingresses)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
   const removeResource = useCluster((s) => s.removeResource)
@@ -54,6 +58,14 @@ export function CanvasRegistry() {
     {
       kind: 'job',
       items: inNs(jobs).map((j) => ({ id: j.id, name: j.name, sub: j.status })),
+    },
+    {
+      kind: 'pvc',
+      items: inNs(pvcs).map((c) => ({ id: c.id, name: c.name, sub: `${c.sizeGi}Gi · ${c.status}` })),
+    },
+    {
+      kind: 'ingress',
+      items: inNs(ingresses).map((g) => ({ id: g.id, name: g.name, sub: `${g.host} → ${g.serviceName}` })),
     },
   ]
 
