@@ -36,7 +36,7 @@ describe("additional Kubernetes controllers", () => {
     expect(pods(state).filter(p => p.ownerReferences?.[0]?.uid === "sts-db")).toHaveLength(0);
     let claims = Object.values(state.resources).filter((r): r is PersistentVolumeClaimResource => r.kind === "PersistentVolumeClaim");
     expect(claims).toHaveLength(1);
-    for (let i = 0; i < 4; i++) state = step(state, createSeededRng(2));
+    for (let i = 0; i < 9; i++) state = step(state, createSeededRng(2));
     const owned = pods(state).filter(p => p.ownerReferences?.[0]?.uid === "sts-db");
     expect(owned.map(p => p.metadata.name).sort()).toEqual(["db-0", "db-1"]);
     expect(owned[0].spec.volumeClaimName).toBe("fast-db-0");

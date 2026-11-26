@@ -150,6 +150,7 @@ export function reconcileJobs(state: EngineState): void {
         appendEvent(state, "Normal", "SuccessfulCreate", `Job ${job.metadata.name} created pod ${pod.metadata.name}`, job.metadata.name);
       }
     }
+    const wasComplete = job.status.conditions.some(condition => condition.type === "Complete" && condition.status);
     const updatedPods = values<PodResource>(state, "Pod").filter(pod => owns(pod, job.metadata.uid));
     const done = updatedPods.filter(pod => pod.status.phase === "Succeeded").length;
     const failedCount = updatedPods.filter(pod => pod.status.phase === "Failed").length;
@@ -160,7 +161,7 @@ export function reconcileJobs(state: EngineState): void {
       const cron = values<CronJobResource>(state, "CronJob").find(item => item.metadata.uid === job.ownerReferences?.[0]?.uid);
       if (cron) {
         cron.status.active = cron.status.active.filter(key => key !== resourceKey(job) || job.status.active > 0);
-        if (job.status.conditions.some(condition => condition.type === "Complete")) cron.status.lastSuccessfulTime = state.tick;
+        if (!wasComplete && job.status.conditions.some(condition => condition.type === "Complete")) cron.status.lastSuccessfulTime = state.tick;
         putResource(state, cron);
       }
     }
@@ -179,11 +180,12 @@ export function reconcilePersistentVolumeClaims(state: EngineState): void {
 
 export function reconcileServices(state: EngineState): void {
   const pods = values<PodResource>(state, "Pod");
-  for (const service of values<ServiceResource>(state, "Service")) {
-    if (!service.status.clusterIP) service.status.clusterIP = `10.96.${(state.nextId % 200) + 1}.${(state.nextId % 250) + 1}`;
-    if (service.spec.type !== "ClusterIP" && !service.status.nodePort) service.status.nodePort = 30000 + (state.nextId % 2768);
+  const services = values<ServiceResource>(state, "Service");
+  for (const [index, service] of services.entries()) {
+    if (!service.status.clusterIP) service.status.clusterIP = `10.96.${Math.floor(index / 250) + 1}.${(index % 250) + 1}`;
+    if (service.spec.type !== "ClusterIP" && !service.status.nodePort) service.status.nodePort = 30000 + index;
     if (service.spec.type === "LoadBalancer" && !service.status.externalIP && state.tick - service.metadata.creationTimestamp >= 5) {
-      service.status.externalIP = `203.0.113.${10 + (state.nextId % 240)}`;
+      service.status.externalIP = `203.0.113.${10 + (index % 240)}`;
       appendEvent(state, "Normal", "Assigned", `LoadBalancer ${service.metadata.name} assigned ${service.status.externalIP}`, service.metadata.name);
     }
     if (service.spec.type !== "LoadBalancer") service.status.externalIP = undefined;
