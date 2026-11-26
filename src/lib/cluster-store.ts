@@ -220,14 +220,6 @@ export function selectorMatches(selector: Labels, labels: Labels): boolean {
   return Object.entries(selector).every(([k, v]) => labels[k] === v)
 }
 
-export function parseSchedule(schedule: string): number {
-  const m = schedule.match(/^\*\/(\d+)/)
-  if (m) return Math.max(1, Number(m[1]))
-  if (schedule.trim() === '* * * * *') return 60
-  const plain = schedule.match(/^(\d+)$/)
-  if (plain) return Math.max(1, Number(plain[1]))
-  return 0 // unsupported
-}
 
 // PodN kept as alias for readability
 export type PodN = Pod

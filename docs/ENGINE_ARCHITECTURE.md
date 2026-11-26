@@ -32,12 +32,11 @@ The canvas keeps its existing Zustand-facing data shape as a projection, while `
 
 ## Next milestones
 
-1. Move DaemonSet and StatefulSet reconciliation into persistent EngineState.
-2. Move Job/CronJob scheduling, PVC provisioning/binding, and Service allocation into engine controllers.
-3. Move the remaining resource CRUD and ownership relationships behind the engine API; keep the canvas model as a read-only projection.
-4. Expose engine snapshots and selectors through a dedicated external-store boundary. Zustand v5 remains the React subscription layer for the current canvas projection.
-5. Add node heartbeat, cordon/drain, affinity and topology spread, then HPA, metrics and PDB.
-6. Add service endpoints, DNS, ingress, network policy, YAML import/export, terminal commands, snapshots and learning scenarios.
+1. Move remaining resource CRUD and ownership relationships behind the engine API; keep the canvas model as a read-only projection.
+2. Add generation-aware rollout behavior for DaemonSet and StatefulSet, plus Job retry/backoff and CronJob history/TTL policies.
+3. Expose engine snapshots and selectors through a dedicated external-store boundary; keep Zustand focused on UI state.
+4. Add node heartbeat, cordon/drain, affinity and topology spread, then HPA, metrics and PDB.
+5. Add service DNS, ingress, network policy, YAML import/export, terminal commands, snapshots and learning scenarios.
 
 
 ## Container lifecycle simulation
