@@ -1,12 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useCluster } from '@/lib/cluster-store'
 import { engineStore } from '@/lib/engine-store'
 
 export interface TrafficRoute { ingressId: string; serviceId: string; podId: string }
 
-export function useTraffic(activeNamespace: string, ingresses: ReturnType<typeof useCluster.getState>['ingresses']) {
+export function useTraffic(activeNamespace: string) {
   const [selectedIngressId, setSelectedIngressId] = useState('')
   const [trafficRoute, setTrafficRoute] = useState<TrafficRoute | null>(null)
   const [trafficMessage, setTrafficMessage] = useState('')

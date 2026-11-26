@@ -404,8 +404,6 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng, {
         deployments: s.deployments,
         replicaSets: s.replicaSets,
-        
-        replicaSets: s.replicaSets,
         daemonSets: s.daemonSets,
         statefulSets: s.statefulSets,
         cronJobs: s.cronJobs,

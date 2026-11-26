@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   ReactFlow,
   Background,
@@ -13,7 +13,6 @@ import {
   type Node,
   type NodeProps,
   type NodeTypes,
-  type Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -130,7 +129,7 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
-  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest } = useTraffic(activeNamespace, ingresses)
+  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
