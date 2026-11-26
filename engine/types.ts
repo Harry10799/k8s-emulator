@@ -27,10 +27,28 @@ export interface ResourceRequirements {
   limits?: { cpuMilli?: number; memoryMi?: number };
 }
 
+export interface ProbeSpec {
+  /** Simulation ticks before the first probe. */
+  initialDelayTicks?: number;
+  /** Probe cadence in simulation ticks. */
+  periodTicks?: number;
+  /** Consecutive failures before the probe fails. */
+  failureThreshold?: number;
+  /** Explicit ticks at which this probe fails; useful for deterministic scenarios. */
+  failureTicks?: number[];
+}
+
 export interface ContainerSpec {
   name: string;
   image: string;
   resources: ResourceRequirements;
+  startupProbe?: ProbeSpec;
+  readinessProbe?: ProbeSpec;
+  livenessProbe?: ProbeSpec;
+  /** Optional deterministic workload behavior for educational scenarios. */
+  simulatedMemoryUsageMi?: number;
+  runForTicks?: number;
+  exitCode?: number;
 }
 
 export interface Toleration {
@@ -59,7 +77,19 @@ export interface PodResource {
   status: {
     phase: PodPhase;
     conditions: Array<{ type: "Ready" | "PodScheduled"; status: boolean; reason?: string; message?: string }>;
-    containerStatuses: Array<{ name: string; ready: boolean; restartCount: number; state: "Waiting" | "Running" | "Terminated" }>;
+    containerStatuses: Array<{
+      name: string;
+      ready: boolean;
+      restartCount: number;
+      state: "Waiting" | "Running" | "Terminated";
+      waitingReason?: "ContainerCreating" | "ErrImagePull" | "ImagePullBackOff" | "CrashLoopBackOff";
+      lastTerminationReason?: "Error" | "OOMKilled" | "Completed" | "LivenessProbeFailed";
+      exitCode?: number;
+      startedAtTick?: number;
+      consecutiveProbeFailures?: { startup: number; readiness: number; liveness: number };
+      lastProbeTick?: { startup: number; readiness: number; liveness: number };
+      nextRestartTick?: number;
+    }>;
   };
   ownerReferences?: OwnerReference[];
 }

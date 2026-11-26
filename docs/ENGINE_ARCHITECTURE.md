@@ -38,3 +38,8 @@ The existing canvas and Zustand simulation remain in place while the engine is i
 4. Add HPA, metrics and PDB.
 5. Add service endpoints, DNS, ingress, network policy and traffic simulation.
 6. Add YAML import/export, terminal commands, snapshots and learning scenarios.
+
+
+## Container lifecycle simulation
+
+The kubelet stage now models per-container image-pull failures, startup/readiness/liveness probes, memory-limit OOM kills, finite process exits, restart policies, restart counts, and exponential restart backoff. Probe failures can be scheduled with explicit simulation ticks to keep scenarios deterministic. This is an educational approximation: image registry access and actual processes are not executed.

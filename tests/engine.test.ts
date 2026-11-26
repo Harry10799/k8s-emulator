@@ -120,4 +120,58 @@ describe("simulation engine", () => {
     expect(resourcesOfKind<ReplicaSetResource>(state, "ReplicaSet")[0].spec.replicas).toBe(3);
   });
 
+  it("reports ErrImagePull then ImagePullBackOff for an unavailable image", () => {
+    const bad = deployment(1);
+    bad.spec.template.spec.containers[0].image = "registry.example/not-found:v1";
+    let state = step(createInitialState([node("worker-a"), bad]), createSeededRng(8));
+    let pod = resourcesOfKind<PodResource>(state, "Pod")[0];
+    expect(pod.status.containerStatuses[0].waitingReason).toBe("ErrImagePull");
+    for (let i = 0; i < 3; i++) state = step(state, createSeededRng(8));
+    pod = resourcesOfKind<PodResource>(state, "Pod")[0];
+    expect(["ErrImagePull", "ImagePullBackOff"]).toContain(pod.status.containerStatuses[0].waitingReason);
+  });
+
+  it("marks a container OOMKilled when simulated memory use exceeds its limit", () => {
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "memory-hog", namespace: "default", uid: "memory-hog", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 50, memoryMi: 64 }, limits: { memoryMi: 128 } }, simulatedMemoryUsageMi: 256 }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    };
+    const result = step(createInitialState([node("worker-a"), pod]), createSeededRng(9));
+    const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
+    expect(actual.status.containerStatuses[0].lastTerminationReason).toBe("OOMKilled");
+    expect(actual.status.containerStatuses[0].exitCode).toBe(137);
+  });
+
+  it("restarts a container after liveness probe threshold and applies backoff", () => {
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "unhealthy", namespace: "default", uid: "unhealthy", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 50, memoryMi: 64 } }, livenessProbe: { failureTicks: [2, 3], failureThreshold: 2, periodTicks: 1 } }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    };
+    let state = createInitialState([node("worker-a"), pod]);
+    state = step(state, createSeededRng(10));
+    state = step(state, createSeededRng(10));
+    state = step(state, createSeededRng(10));
+    const actual = resourcesOfKind<PodResource>(state, "Pod")[0];
+    expect(actual.status.containerStatuses[0].lastTerminationReason).toBe("LivenessProbeFailed");
+    expect(actual.status.containerStatuses[0].restartCount).toBe(1);
+    expect(actual.status.containerStatuses[0].waitingReason).toBe("CrashLoopBackOff");
+  });
+
+  it("keeps a Pod Running but NotReady while its readiness probe fails", () => {
+    const pod: PodResource = {
+      apiVersion: "v1", kind: "Pod",
+      metadata: { name: "not-ready", namespace: "default", uid: "not-ready", resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 },
+      spec: { containers: [{ name: "app", image: "busybox:1.36", resources: { requests: { cpuMilli: 50, memoryMi: 64 } }, readinessProbe: { failureTicks: [2], failureThreshold: 1 } }] },
+      status: { phase: "Pending", conditions: [], containerStatuses: [] },
+    };
+    const result = step(createInitialState([node("worker-a"), pod]), createSeededRng(11));
+    const actual = resourcesOfKind<PodResource>(result, "Pod")[0];
+    expect(actual.status.phase).toBe("Running");
+    expect(actual.status.conditions.find((c) => c.type === "Ready")?.status).toBe(false);
+  });
+
 });
