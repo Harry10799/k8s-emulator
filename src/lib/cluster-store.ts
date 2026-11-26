@@ -1,7 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
-import { schedulePod } from '../../engine/scheduler'
+import { createInitialState, schedulePendingPods } from '../../engine/engine'
 import { createSeededRng } from '../../engine/rng'
 import type { NodeResource, PodResource } from '../../engine/types'
 
@@ -340,8 +340,12 @@ function basePod(over: Partial<Pod>): Pod {
 }
 
 
-/** Adapt the canvas store's lightweight objects to the engine scheduler contract. */
-function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?: string; reason?: string } {
+/**
+ * Adapt the canvas store snapshot to the pure engine scheduler. All Pending
+ * Pods are evaluated together so each placement sees earlier placements in
+ * this same scheduling cycle.
+ */
+function scheduleClusterWithEngine(pods: Pod[], nodes: K8sNode[], tick: number): { assignments: Map<string, string>; failures: Map<string, string> } {
   const engineNodes: NodeResource[] = nodes.filter((node) => node.role === 'worker').map((node): NodeResource => ({
     apiVersion: 'v1',
     kind: 'Node',
@@ -349,7 +353,6 @@ function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?:
     spec: { capacity: { cpuMilli: node.cpuCapacity, memoryMi: node.memCapacity } },
     status: { conditions: [{ type: 'Ready', status: true }] },
   }))
-  const nodeByName = new Map(engineNodes.map((node) => [node.metadata.name, node.metadata.uid]))
   const enginePods: PodResource[] = pods.map((item): PodResource => ({
     apiVersion: 'v1',
     kind: 'Pod',
@@ -357,10 +360,25 @@ function scheduleWithEngine(pod: Pod, nodes: K8sNode[], pods: Pod[]): { nodeId?:
     spec: { containers: [{ name: 'main', image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } } }], ...(item.nodeId ? { nodeName: nodes.find((node) => node.id === item.nodeId)?.name } : {}) },
     status: { phase: item.phase === 'Succeeded' ? 'Succeeded' : item.phase === 'Terminating' ? 'Failed' : item.phase === 'Running' ? 'Running' : 'Pending', conditions: [], containerStatuses: [] },
   }))
-  const target = enginePods.find((candidate) => candidate.metadata.uid === pod.id)
-  if (!target) return { reason: 'Pod could not be adapted for scheduling' }
-  const result = schedulePod(target, engineNodes, enginePods)
-  return result.node ? { nodeId: nodeByName.get(result.node.metadata.name) } : { reason: result.reason }
+  const snapshot = createInitialState([...engineNodes, ...enginePods])
+  snapshot.tick = tick
+  const scheduled = schedulePendingPods(snapshot)
+  const nodeIds = new Map(engineNodes.map((node) => [node.metadata.name, node.metadata.uid]))
+  const assignments = new Map<string, string>()
+  for (const resource of Object.values(scheduled.resources)) {
+    if (resource.kind !== 'Pod' || !resource.spec.nodeName) continue
+    const nodeId = nodeIds.get(resource.spec.nodeName)
+    if (nodeId) assignments.set(resource.metadata.uid, nodeId)
+  }
+  const namesById = new Map(pods.map((pod) => [pod.id, pod.name]))
+  const failures = new Map<string, string>()
+  for (const event of scheduled.events) {
+    if (event.reason === 'FailedScheduling') {
+      const podId = pods.find((pod) => pod.name === event.object)?.id
+      if (podId) failures.set(podId, event.message)
+    }
+  }
+  return { assignments, failures }
 }
 
 
@@ -434,19 +452,20 @@ export const useCluster = create<ClusterState>((set, get) => ({
         }
       }
 
-      // ---- scheduler for unbound Pending pods (engine filter/score pipeline) ----
+      // ---- pure engine scheduling cycle for all unbound Pending pods ----
+      const scheduling = scheduleClusterWithEngine(s.pods, s.nodes, t)
       for (const pod of s.pods) {
         if (pod.phase !== 'Pending' || pod.nodeId) continue
-        const result = scheduleWithEngine(pod, s.nodes, s.pods)
-        if (result.nodeId) {
-          const host = s.nodes.find((node) => node.id === result.nodeId)
-          pod.nodeId = result.nodeId
+        const nodeId = scheduling.assignments.get(pod.id)
+        if (nodeId) {
+          const host = s.nodes.find((node) => node.id === nodeId)
+          pod.nodeId = nodeId
           pod.phase = 'ContainerCreating'
           pod.phaseTicks = 0
-          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${host?.name ?? result.nodeId}`, pod.name)
-          podLog(pod, t, `Assigned to ${host?.name ?? result.nodeId}`)
+          logEvent(s, 'Normal', 'Scheduled', `Successfully assigned ${pod.name} to ${host?.name ?? nodeId}`, pod.name)
+          podLog(pod, t, `Assigned to ${host?.name ?? nodeId}`)
         } else if (t % 4 === 0) {
-          logEvent(s, 'Warning', 'FailedScheduling', result.reason ?? `0/${workers().length} nodes are available`, pod.name)
+          logEvent(s, 'Warning', 'FailedScheduling', scheduling.failures.get(pod.id) ?? `0/${workers().length} nodes are available`, pod.name)
         }
       }
       // ---- pod lifecycle ----

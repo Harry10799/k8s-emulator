@@ -24,6 +24,28 @@ function getPods(state: EngineState): PodResource[] {
   );
 }
 
+/** Run the scheduler stage without advancing controllers or container lifecycle. */
+export function schedulePendingPods(state: EngineState): EngineState {
+  const next: EngineState = structuredClone(state);
+    const nodes = getNodes(next);
+    for (const pod of getPods(next)) {
+      if (pod.status.phase !== "Pending" || pod.spec.nodeName) continue;
+      const result = schedulePod(pod, nodes, getPods(next));
+      if (result.node) {
+        pod.spec.nodeName = result.node.metadata.name;
+        pod.status.conditions = [
+          { type: "PodScheduled", status: true, reason: "Scheduled" },
+          { type: "Ready", status: false, reason: "ContainersNotReady" },
+        ];
+        putResource(next, pod);
+        appendEvent(next, "Normal", "Scheduled", `Successfully assigned ${pod.metadata.name} to ${result.node.metadata.name}`, pod.metadata.name);
+      } else if (next.tick % 4 === 0) {
+        appendEvent(next, "Warning", "FailedScheduling", result.reason ?? "No eligible nodes", pod.metadata.name);
+      }
+    }
+  return next;
+}
+
 function updatePodReadiness(state: EngineState, pod: PodResource): void {
   if (!pod.spec.nodeName || pod.status.phase !== "Pending") return;
   pod.status.phase = "Running";
@@ -53,22 +75,9 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   reconcileDeployments(next);
   reconcileReplicaSets(next);
 
-  const nodes = getNodes(next);
-  for (const pod of getPods(next)) {
-    if (pod.status.phase !== "Pending" || pod.spec.nodeName) continue;
-    const result = schedulePod(pod, nodes, getPods(next));
-    if (result.node) {
-      pod.spec.nodeName = result.node.metadata.name;
-      pod.status.conditions = [
-        { type: "PodScheduled", status: true, reason: "Scheduled" },
-        { type: "Ready", status: false, reason: "ContainersNotReady" },
-      ];
-      putResource(next, pod);
-      appendEvent(next, "Normal", "Scheduled", `Successfully assigned ${pod.metadata.name} to ${result.node.metadata.name}`, pod.metadata.name);
-    } else if (next.tick % 4 === 0) {
-      appendEvent(next, "Warning", "FailedScheduling", result.reason ?? "No eligible nodes", pod.metadata.name);
-    }
-  }
+  const scheduled = schedulePendingPods(next);
+  next.resources = scheduled.resources;
+  next.events = scheduled.events;
 
   for (const pod of getPods(next)) updatePodReadiness(next, pod);
   reconcileReplicaSets(next);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createInitialState, createSeededRng, step, type DeploymentResource, type NodeResource, type PodResource, type ReplicaSetResource } from "../engine";
+import { createInitialState, createSeededRng, schedulePendingPods, step, type DeploymentResource, type NodeResource, type PodResource, type ReplicaSetResource } from "../engine";
 
 function node(name: string): NodeResource {
   return {
@@ -74,6 +74,22 @@ describe("simulation engine", () => {
     expect(resourcesOfKind<ReplicaSetResource>(second, "ReplicaSet")).toHaveLength(1);
     expect(resourcesOfKind<PodResource>(second, "Pod")).toHaveLength(1);
     expect(resourcesOfKind<DeploymentResource>(second, "Deployment")[0].status.readyReplicas).toBe(1);
+  });
+
+  it("schedules Pending Pods together without mutating the input snapshot", () => {
+    const initial = createInitialState([node("worker-a"), deployment(2)]);
+    const afterStep = step(initial, createSeededRng(42));
+    const pods = Object.values(afterStep.resources).filter((resource): resource is PodResource => resource.kind === "Pod");
+    for (const pod of pods) {
+      pod.status.phase = "Pending";
+      pod.spec.nodeName = undefined;
+    }
+    const before = structuredClone(afterStep);
+    const scheduled = schedulePendingPods(afterStep);
+    const scheduledPods = Object.values(scheduled.resources).filter((resource): resource is PodResource => resource.kind === "Pod");
+    expect(scheduledPods.every((pod) => pod.spec.nodeName === "worker-a")).toBe(true);
+    expect(afterStep).toEqual(before);
+    expect(scheduled.events.filter((event) => event.reason === "Scheduled")).toHaveLength(2);
   });
 
   it("does not mutate the previous state snapshot", () => {
