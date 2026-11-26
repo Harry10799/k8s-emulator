@@ -184,14 +184,14 @@ function toDeployment(item: CanvasDeployment, previous?: DeploymentResource): De
     status:previous?.status ?? {observedGeneration:0,replicas:0,updatedReplicas:0,readyReplicas:0,availableReplicas:0,conditions:[]},
   };
 }
-function toReplicaSet(item: CanvasReplicaSet, previous?: ReplicaSetResource): ReplicaSetResource {
+function toReplicaSet(item: CanvasReplicaSet, previous?: ReplicaSetResource, parentName?: string): ReplicaSetResource {
   const meta = makeMeta(previous,item.name,item.namespace,item.id,item.labels);
   meta.annotations["deployment.kubernetes.io/revision"] = String(item.revision);
   return {
     apiVersion:"apps/v1",kind:"ReplicaSet",metadata:meta,
     spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}}},
     status:previous?.status ?? {observedGeneration:1,replicas:0,readyReplicas:0,availableReplicas:0},
-    ownerReferences:item.parentDeployment ? controllerOwner(item.parentDeployment,"Deployment",item.parentDeployment) : undefined,
+    ownerReferences:item.parentDeployment ? controllerOwner(item.parentDeployment,"Deployment",parentName ?? item.parentDeployment) : undefined,
   };
 }
 function toDaemonSet(item: CanvasDaemonSet, previous?: DaemonSetResource): DaemonSetResource {
@@ -290,7 +290,7 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   if (controllers) {
     const previousByUid = <T extends { metadata: { uid: string } }>(uid: string, kind: string) => Object.values(oldResources).find(resource => resource.kind === kind && resource.metadata.uid === uid) as T | undefined;
     for (const item of controllers.deployments ?? []) { const resource = toDeployment(item,previousByUid<DeploymentResource>(item.id,"Deployment")); resources[resourceKey(resource)] = resource; }
-    for (const item of controllers.replicaSets ?? []) { const resource = toReplicaSet(item,previousByUid<ReplicaSetResource>(item.id,"ReplicaSet")); resources[resourceKey(resource)] = resource; }
+    for (const item of controllers.replicaSets ?? []) { const parentName = controllers.deployments?.find(deployment => deployment.id === item.parentDeployment)?.name; const resource = toReplicaSet(item,previousByUid<ReplicaSetResource>(item.id,"ReplicaSet"),parentName); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.daemonSets) { const resource = toDaemonSet(item,previousByUid<DaemonSetResource>(item.id,"DaemonSet")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.statefulSets) { const resource = toStatefulSet(item,previousByUid<StatefulSetResource>(item.id,"StatefulSet")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.jobs) { const resource = toJob(item,previousByUid<JobResource>(item.id,"Job")); resources[resourceKey(resource)] = resource; }

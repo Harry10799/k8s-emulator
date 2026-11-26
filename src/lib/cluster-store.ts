@@ -385,9 +385,10 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const t = s.tickCount
       // Re-seeding per tick makes crash injection reproducible for the same tick.
       const tickRng = createSeededRng(0x5eed1234 ^ t)
-      const ownedBy = (oid: string) => s.pods.filter((p) => p.ownerId === oid)
       // ---- persistent engine owns scheduling, kubelet lifecycle and workload controllers ----
       const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng, {
+        deployments: s.deployments,
+        replicaSets: s.replicaSets,
         daemonSets: s.daemonSets,
         statefulSets: s.statefulSets,
         cronJobs: s.cronJobs,
@@ -397,6 +398,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       } satisfies CanvasControllers)
       s.pods = runtime.pods
       if (runtime.controllers) {
+        s.deployments = runtime.controllers.deployments ?? s.deployments
+        s.replicaSets = runtime.controllers.replicaSets ?? s.replicaSets
         s.daemonSets = runtime.controllers.daemonSets
         s.statefulSets = runtime.controllers.statefulSets
         s.cronJobs = runtime.controllers.cronJobs
@@ -416,7 +419,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
         return true
       })
 
-      // DaemonSet, StatefulSet, Job/CronJob, PVC and Service are reconciled by engine/controllers.ts.
+      // Deployment, ReplicaSet and workload controllers reconcile in the engine registry.
 
       // ---- chaos monkey ----
       if (s.chaos && t % 3 === 0) {
@@ -777,7 +780,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
     set((state) => {
       const dep = state.deployments.find((d) => d.id === id)
       if (!dep) return state
-      const s = { ...state, events: [...state.events], deployments: state.deployments.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)), replicaSets: state.replicaSets } as ClusterState
+      const s = { ...state, events: [...state.events], deployments: state.deployments.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)) } as ClusterState
       logEvent(s, 'Normal', 'ScalingReplicaSet', `Scaled deployment ${dep.name} from ${dep.replicas} to ${Math.max(0, replicas)}`, dep.name)
       return s
     }),

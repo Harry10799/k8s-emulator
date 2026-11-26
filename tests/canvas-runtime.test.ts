@@ -17,6 +17,23 @@ describe("persistent canvas runtime", () => {
     resetCanvasRuntime();
   });
 
+  it("reconciles Deployment and ReplicaSet resources in the retained engine", () => {
+    resetCanvasRuntime();
+    const controllers = emptyControllers();
+    controllers.deployments = [{
+      id: "deployment-web", name: "web", namespace: "default", labels: { app: "web" }, selector: { app: "web" },
+      replicas: 2, image: "nginx:1.27", cpuRequest: 100, memRequest: 64, crashRate: 0, revision: 1,
+    }];
+    const first = advanceCanvasRuntime(nodes, [], 1, createSeededRng(11), controllers);
+    expect(first.controllers?.replicaSets).toHaveLength(1);
+    expect(first.controllers?.replicaSets?.[0]).toMatchObject({ parentDeployment: "deployment-web", replicas: 2 });
+    expect(first.pods).toHaveLength(2);
+    const second = advanceCanvasRuntime(nodes, first.pods, 2, createSeededRng(12), first.controllers);
+    expect(second.controllers?.replicaSets).toHaveLength(1);
+    expect(second.pods).toHaveLength(2);
+    resetCanvasRuntime();
+  });
+
   it("runs DaemonSet controllers through the retained canvas EngineState", () => {
     resetCanvasRuntime();
     const controllers = emptyControllers();
