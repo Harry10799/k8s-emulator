@@ -501,7 +501,9 @@ export const useCluster = create<ClusterState>((set, get) => ({
         }
       }
 
-      // DaemonSet, StatefulSet, Job/CronJob, PVC and Service are reconciled by engine/controllers.ts.\n\n      // ---- chaos monkey ----
+      // DaemonSet, StatefulSet, Job/CronJob, PVC and Service are reconciled by engine/controllers.ts.
+
+      // ---- chaos monkey ----
       if (s.chaos && t % 3 === 0) {
         const alive = s.pods.filter((p) => p.phase === 'Running')
         if (alive.length > 0 && tickRng.next() < 0.5) {
