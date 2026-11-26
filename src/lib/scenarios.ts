@@ -1,0 +1,64 @@
+import type { KubernetesResource, PodResource } from '../../engine/types'
+import type { ClusterState } from './cluster-store'
+export type ScenarioCategory='Scheduling'|'Workloads'|'Networking'|'Storage'|'Health & Probes'|'Scaling'|'Security & Config'|'Operations'
+export interface LearningScenario{id:string;category:ScenarioCategory;title:string;objective:string;hint:string;validate:(r:KubernetesResource[],c:ClusterState)=>boolean}
+const definitions=[["Scheduling","Why is my Pod Pending?","Make a blocked Pod Running and Ready.","Inspect nodeSelector, taints, requests and node capacity."],["Scheduling","Fix an invalid nodeSelector","Make Pods with node selectors schedulable.","Compare selector labels with worker labels."],["Scheduling","Cordon a worker safely","Mark a worker unschedulable without deleting it.","Use node lifecycle controls."],["Scheduling","Uncordon a worker","Return all workers to schedulable state.","Clear unschedulable on workers."],["Scheduling","Schedule through a taint","Run a Pod on a tainted node with a matching toleration.","Match toleration key, value and effect."],["Scheduling","Spread replicas across workers","Place healthy replicas on at least two workers.","Scale replicas and inspect node assignments."],["Scheduling","Resolve insufficient capacity","Get desired Deployment replicas scheduled.","Compare requests with allocatable CPU and memory."],["Scheduling","Recover a NotReady node","Restore Ready state on every worker.","Inspect node heartbeat controls."],["Workloads","Run three healthy replicas","Keep at least three Deployment replicas Ready.","Set replicas to three and wait for reconciliation."],["Workloads","Zero-downtime rollout","Complete a RollingUpdate with maxUnavailable zero.","Check strategy and newest ReplicaSet readiness."],["Workloads","DaemonSet on every worker","Make every eligible DaemonSet Pod Ready.","Compare desiredNumberScheduled and numberReady."],["Workloads","Scale a StatefulSet safely","Make every desired StatefulSet replica Ready.","StatefulSet Pods are created in ordinal order."],["Workloads","Complete a batch Job","Run a Job to successful completion.","Inspect completions, parallelism and Pod exit status."],["Workloads","Schedule a CronJob","Create a CronJob that is not suspended.","Check suspend and schedule fields."],["Workloads","Clean up old ReplicaSets","Keep old revisions scaled down after rollout.","Compare Deployment revision annotations."],["Networking","Restore empty Service endpoints","Make a Service publish a Ready endpoint.","Selector labels must match Ready Pod labels."],["Networking","Build a two-Pod backend","Publish two Ready Pods behind one Service.","Scale the matching Deployment."],["Networking","Fix a Service selector","Configure a selector that matches Ready Pods.","Compare selector with Pod template labels."],["Networking","Expose a NodePort Service","Create a Service of type NodePort.","Choose NodePort in the Service spec."],["Networking","Provision a LoadBalancer","Get an external IP for a LoadBalancer Service.","Wait for simulated provisioning ticks."],["Networking","Align Service targetPort","Make Service targetPort match an app port.","Inspect Service and container ports."],["Networking","Route an Ingress to a Service","Configure an Ingress backend that resolves.","Connect Ingress to Service in topology."],["Networking","Route only to Ready Pods","Ensure Service endpoints contain Ready Pods only.","Readiness controls endpoint publication."],["Networking","Keep traffic namespace-local","Keep Service endpoints in the same namespace.","Services select Pods in their own namespace."],["Storage","Bind a PersistentVolumeClaim","Get a PVC to Bound state.","Check storage class and requested capacity."],["Storage","Give StatefulSet persistent storage","Configure a volumeClaimTemplate.","Set storageGi and storageClassName."],["Storage","Request durable capacity","Bind a PVC requesting at least 5 GiB.","Set storageGi to five or more."],["Storage","Use an explicit StorageClass","Bind a PVC with a non-empty storage class.","Set storageClassName explicitly."],["Health & Probes","Add a readiness probe","Configure readinessProbe on a workload container.","Add readinessProbe to the Pod template."],["Health & Probes","Add a liveness probe","Configure livenessProbe to detect a stuck process.","Add livenessProbe to the template."],["Health & Probes","Protect a slow-starting app","Configure a startup probe.","Startup probes protect slow initialization."],["Health & Probes","Recover a CrashLoopBackOff Pod","Eliminate CrashLoopBackOff Pods.","Inspect crash rate, image and restart behavior."],["Health & Probes","Stabilize container restarts","Reach zero restarts on healthy Pods.","Fix failing processes or probes first."],["Health & Probes","Reach full cluster readiness","Make every Pod Ready.","Inspect readiness and scheduling blockers."],["Health & Probes","Achieve Guaranteed QoS","Match CPU and memory requests and limits.","Guaranteed QoS requires requests equal limits."],["Health & Probes","Resolve node memory pressure","Clear MemoryPressure from workers.","Reduce workload memory or increase capacity."],["Scaling","Create your first HPA","Attach an HPA to a Deployment.","Target a Deployment with a CPU metric."],["Scaling","Make HPA scale up","Drive CPU above target and observe scale-up.","Raise CPU/RPS load and allow controller ticks."],["Scaling","Set safe HPA replica bounds","Configure valid min and max replicas.","Keep min at least one and max greater than min."],["Scaling","Tune a 60% CPU target","Set an HPA CPU target to 60%.","Adjust the Resource CPU utilization target."],["Scaling","Scale back after load drops","Observe desired replicas fall after lowering load.","Lower CPU/RPS and wait for HPA cooldown."],["Security & Config","Inject ConfigMap through template","Reference a ConfigMap from a workload template.","Connect ConfigMap to a workload controller."],["Security & Config","Inject Secret through template","Reference a Secret from a workload template.","Use Secret-to-workload-template connection."],["Security & Config","Avoid privileged containers","Ensure containers do not run privileged.","Review securityContext on each container."],["Security & Config","Run as non-root","Set runAsNonRoot on app containers.","Set Pod or container securityContext."],["Security & Config","Set resource requests","Set positive CPU and memory requests.","Requests help the scheduler place workloads."],["Security & Config","Set resource limits","Configure CPU and memory limits.","Limits constrain resource consumption."],["Operations","Deploy outside default namespace","Run a healthy Deployment in a dedicated namespace.","Create namespace and select it for workload."],["Operations","Build a multi-worker cluster","Operate at least three Ready workers.","Add workers and wait for heartbeats."],["Operations","Restore a healthy baseline","Have no Pending, CrashLoopBackOff or NotReady Pods.","Inspect events, scheduling, probes and node health."]] as Array<[ScenarioCategory,string,string,string]>
+const of=<T extends KubernetesResource['kind']>(r:KubernetesResource[],kind:T)=>r.filter((x):x is Extract<KubernetesResource,{kind:T}>=>x.kind===kind)
+const isReady=(p:PodResource)=>p.status.phase==='Running'&&p.status.conditions.some(x=>x.type==='Ready'&&x.status)
+function check(id:string,r:KubernetesResource[],c:ClusterState){
+ const p=of(r,'Pod'),d=of(r,'Deployment'),n=of(r,'Node'),s=of(r,'Service'),v=of(r,'PersistentVolumeClaim'),h=of(r,'HorizontalPodAutoscaler'),sts=of(r,'StatefulSet'),ds=of(r,'DaemonSet'),jobs=of(r,'Job'),cjs=of(r,'CronJob')
+ switch(id){
+ case 'sc-01':return p.some(isReady)
+ case 'sc-02':return p.filter(x=>x.spec.nodeSelector).every(x=>x.status.conditions.some(y=>y.type==='PodScheduled'&&y.status))
+ case 'sc-03':return n.some(x=>x.spec.unschedulable)
+ case 'sc-04':return n.length>0&&n.every(x=>!x.spec.unschedulable)
+ case 'sc-05':return p.some(x=>isReady(x)&&Boolean(x.spec.tolerations?.length))
+ case 'sc-06':return new Set(p.filter(isReady).map(x=>x.spec.nodeName).filter(Boolean)).size>=2
+ case 'sc-07':return d.some(x=>x.spec.replicas>0&&x.status.readyReplicas>=x.spec.replicas)
+ case 'sc-08':return n.length>0&&n.every(x=>x.status.conditions.some(y=>y.type==='Ready'&&y.status))
+ case 'sc-09':return d.some(x=>x.spec.replicas>=3&&x.status.readyReplicas>=3)
+ case 'sc-10':return d.some(x=>x.spec.strategy?.type==='RollingUpdate'&&(x.spec.strategy.maxUnavailable??0)===0&&x.spec.replicas>0&&x.status.readyReplicas>=x.spec.replicas)
+ case 'sc-11':return ds.some(x=>x.status.desiredNumberScheduled>0&&x.status.numberReady>=x.status.desiredNumberScheduled)
+ case 'sc-12':return sts.some(x=>x.spec.replicas>0&&x.status.readyReplicas>=x.spec.replicas)
+ case 'sc-13':return jobs.some(x=>x.status.succeeded>=x.spec.completions&&x.status.conditions.some(y=>y.type==='Complete'&&y.status))
+ case 'sc-14':return cjs.some(x=>!x.spec.suspend&&x.spec.schedule.trim().length>0)
+ case 'sc-15':return r.some(x=>x.kind==='ReplicaSet'&&x.spec.replicas===0)&&d.some(x=>x.status.updatedReplicas===x.spec.replicas)
+ case 'sc-16':return s.some(x=>x.status.endpoints.length>0)
+ case 'sc-17':return s.some(x=>x.status.endpoints.length>=2)
+ case 'sc-18':return s.some(x=>Object.keys(x.spec.selector).length>0&&x.status.endpoints.length>0)
+ case 'sc-19':return s.some(x=>x.spec.type==='NodePort'&&Boolean(x.status.nodePort))
+ case 'sc-20':return s.some(x=>x.spec.type==='LoadBalancer'&&Boolean(x.status.externalIP))
+ case 'sc-21':return s.some(x=>x.status.endpoints.length>0)
+ case 'sc-22':return c.ingresses.some(i=>s.some(x=>x.metadata.namespace===i.namespace&&x.metadata.name===i.serviceName))
+ case 'sc-23':return s.some(x=>x.status.endpoints.length>0&&x.status.endpoints.every(e=>p.some(y=>y.metadata.uid===e.podUid&&isReady(y))))
+ case 'sc-24':return s.some(x=>x.status.endpoints.length>0&&x.status.endpoints.every(e=>p.some(y=>y.metadata.uid===e.podUid&&y.metadata.namespace===x.metadata.namespace)))
+ case 'sc-25':return v.some(x=>x.status.phase==='Bound')
+ case 'sc-26':return sts.some(x=>Boolean(x.spec.volumeClaimTemplate?.storageGi))
+ case 'sc-27':return v.some(x=>x.spec.storageGi>=5&&x.status.phase==='Bound')
+ case 'sc-28':return v.some(x=>x.spec.storageClassName.trim().length>0&&x.status.phase==='Bound')
+ case 'sc-29':return p.some(x=>isReady(x)&&x.spec.containers.some(y=>Boolean(y.readinessProbe)))
+ case 'sc-30':return p.some(x=>x.spec.containers.some(y=>Boolean(y.livenessProbe)))
+ case 'sc-31':return p.some(x=>x.spec.containers.some(y=>Boolean(y.startupProbe)))
+ case 'sc-32':return p.length>0&&p.every(x=>x.status.phase!=='CrashLoopBackOff')
+ case 'sc-33':return p.some(isReady)&&p.filter(isReady).every(x=>x.status.containerStatuses.every(y=>y.restartCount===0))
+ case 'sc-34':return p.length>0&&p.every(isReady)
+ case 'sc-35':return p.some(x=>x.status.qosClass==='Guaranteed')
+ case 'sc-36':return n.every(x=>!x.status.conditions.some(y=>y.type==='MemoryPressure'&&y.status))
+ case 'sc-37':return h.some(x=>d.some(y=>y.metadata.name===x.spec.scaleTargetRef.name&&y.metadata.namespace===x.metadata.namespace))
+ case 'sc-38':return h.some(x=>(x.status.currentCPUUtilizationPercentage??0)>x.spec.metrics[0]?.resource.target.averageUtilization&&x.status.desiredReplicas>x.status.currentReplicas)
+ case 'sc-39':return h.some(x=>x.spec.minReplicas>=1&&x.spec.maxReplicas>x.spec.minReplicas)
+ case 'sc-40':return h.some(x=>x.spec.metrics.some(y=>y.resource.target.averageUtilization===60))
+ case 'sc-41':return h.some(x=>x.status.desiredReplicas<x.status.currentReplicas)
+ case 'sc-42':return [...d,...sts,...ds].some(x=>x.spec.template.spec.envFrom?.some(y=>Boolean(y.configMapRef)))
+ case 'sc-43':return [...d,...sts,...ds].some(x=>x.spec.template.spec.envFrom?.some(y=>Boolean(y.secretRef)))
+ case 'sc-44':return p.length>0&&p.every(x=>x.spec.containers.every(y=>!y.securityContext?.privileged))
+ case 'sc-45':return p.some(x=>x.spec.containers.every(y=>y.securityContext?.runAsNonRoot===true))
+ case 'sc-46':return p.length>0&&p.every(x=>x.spec.containers.every(y=>y.resources.requests.cpuMilli>0&&y.resources.requests.memoryMi>0))
+ case 'sc-47':return p.some(x=>x.spec.containers.every(y=>(y.resources.limits?.cpuMilli??0)>0&&(y.resources.limits?.memoryMi??0)>0))
+ case 'sc-48':return d.some(x=>x.metadata.namespace!=='default'&&x.spec.replicas>0&&x.status.readyReplicas>=x.spec.replicas)
+ case 'sc-49':return n.filter(x=>x.status.conditions.some(y=>y.type==='Ready'&&y.status)).length>=3
+ case 'sc-50':return p.length>0&&p.every(isReady)&&n.every(x=>x.status.conditions.some(y=>y.type==='Ready'&&y.status))
+ default:return false
+ }
+}
+export const LEARNING_SCENARIOS:LearningScenario[]=definitions.map(([category,title,objective,hint],i)=>{const id='sc-'+String(i+1).padStart(2,'0');return{id,category,title,objective,hint,validate:(r,c)=>check(id,r,c)}})

@@ -19,7 +19,6 @@ import { ControlPlaneCard, type ControlPlaneData } from './control-plane-card'
 import { CanvasRegistry } from './canvas-registry'
 import { TopologyCanvas } from './topology-canvas'
 import { ClusterHealth } from './cluster-health'
-import { SimulationLab } from './simulation-lab'
 
 const nodeTypes: NodeTypes = {
   workerNode: WorkerNodeCard,
@@ -170,7 +169,6 @@ export function ClusterCanvas() {
       {/* cluster-level resources (cm/secret/svc/cj/job) visible + editable on canvas */}
       {view === 'infra' && <CanvasRegistry />}
       <ClusterHealth />
-      <SimulationLab />
     </div>
   )
 }

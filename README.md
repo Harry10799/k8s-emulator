@@ -59,3 +59,8 @@ The Topology view supports typed drag-to-connect relationships: Service → Depl
 ### Simulation controls, challenges and autoscaling
 
 The canvas includes pause/resume, single-step and bounded rewind history (up to 120 ticks). The Simulation Lab includes a Pending Pod troubleshooting exercise and a readiness-gated zero-downtime rollout exercise with live validators. It also exposes a simulated CPU load control and can attach an autoscaling/v2-style HPA to a selected Deployment. HPA decisions use simulated CPU utilization and reconcile Deployment replicas within configured minimum/maximum bounds. This is an educational approximation of Kubernetes HPA behavior.
+
+
+## Simulation Lab learning paths
+
+The Simulation Lab is a dedicated top-level workspace with 50 guided Kubernetes scenarios across Scheduling, Workloads, Networking, Storage, Health & Probes, Scaling, Security & Config, and Operations. Each mission includes an objective, hint, and a live validator reading current engine and cluster state. The workbench Explorer and Inspector sidebars can be collapsed to maximize canvas space.

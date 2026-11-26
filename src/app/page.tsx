@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine, Boxes } from 'lucide-react'
+import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine, Boxes, ChevronLeft, ChevronRight, PanelLeft, PanelRight, Activity, LayoutDashboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
@@ -17,6 +17,7 @@ import { EditDialog } from '@/components/k8s/edit-dialog'
 import { NodeInternalsDialog } from '@/components/k8s/node-internals'
 import { EventFeed } from '@/components/k8s/event-feed'
 import { ResourceList } from '@/components/k8s/resource-list'
+import { SimulationLab } from '@/components/k8s/simulation-lab'
 
 function Toolbar() {
   const running = useCluster((s) => s.running)
@@ -141,51 +142,20 @@ function InspectorSheet() {
 }
 
 export default function Home() {
-  return (
-    <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 antialiased">
-      <Toolbar />
-      <div className="flex min-h-0 flex-1">
-        {/* left: palette + resources */}
-        <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-          <Tabs defaultValue="create" className="flex min-h-0 flex-col flex-1">
-            <TabsList className="mx-3 mt-2 grid grid-cols-2 bg-zinc-900 border border-zinc-800 shrink-0">
-              <TabsTrigger value="create" className="text-xs data-[state=active]:bg-zinc-800">Create</TabsTrigger>
-              <TabsTrigger value="resources" className="text-xs data-[state=active]:bg-zinc-800">Resources</TabsTrigger>
-            </TabsList>
-            <TabsContent value="create" className="flex-1 min-h-0 mt-0">
-              <ScrollArea className="h-full">
-                <Palette />
-              </ScrollArea>
-            </TabsContent>
-            <TabsContent value="resources" className="flex-1 min-h-0 mt-0">
-              <ScrollArea className="h-full">
-                <ResourceList />
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        </aside>
-
-        {/* center: canvas + event feed */}
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
-            <ReactFlowProvider>
-              <ClusterCanvas />
-            </ReactFlowProvider>
-          </div>
-          <div className="h-36 shrink-0">
-            <EventFeed />
-          </div>
-        </main>
-
-        {/* right: inspector */}
-        <aside className="hidden lg:block w-80 shrink-0 border-l border-zinc-800 bg-zinc-950 overflow-y-auto custom-scroll">
-          <Inspector />
-        </aside>
-      </div>
-      <InspectorSheet />
-      <EditDialog />
-      <NodeInternalsDialog />
-      <Toaster theme="dark" />
-    </div>
-  )
+ const [activeView,setActiveView]=useState<'workbench'|'lab'>('workbench')
+ const [leftOpen,setLeftOpen]=useState(true)
+ const [rightOpen,setRightOpen]=useState(true)
+ return <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 antialiased"><Toolbar/><div className="flex min-h-0 flex-1">
+ <aside className={`hidden md:flex shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 transition-[width] duration-200 ${leftOpen?'w-60':'w-12'}`}>
+  <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-2">{leftOpen&&<span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Explorer</span>}<button onClick={()=>setLeftOpen(v=>!v)} aria-label={leftOpen?'Collapse explorer':'Expand explorer'} title={leftOpen?'Collapse explorer':'Expand explorer'} className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">{leftOpen?<ChevronLeft className="h-4 w-4"/>:<ChevronRight className="h-4 w-4"/>}</button></div>
+  {leftOpen?<Tabs defaultValue="create" className="flex min-h-0 flex-1 flex-col"><TabsList className="mx-3 mt-2 grid grid-cols-2 bg-zinc-900 border border-zinc-800 shrink-0"><TabsTrigger value="create" className="text-xs data-[state=active]:bg-zinc-800">Create</TabsTrigger><TabsTrigger value="resources" className="text-xs data-[state=active]:bg-zinc-800">Resources</TabsTrigger></TabsList><TabsContent value="create" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><Palette/></ScrollArea></TabsContent><TabsContent value="resources" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><ResourceList/></ScrollArea></TabsContent></Tabs>:<div className="flex flex-col items-center gap-3 pt-3 text-zinc-600"><PanelLeft className="h-4 w-4"/><Boxes className="h-4 w-4"/></div>}
+ </aside>
+ <main className="flex min-w-0 flex-1 flex-col"><div className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-3">
+  <button onClick={()=>setActiveView('workbench')} aria-pressed={activeView==='workbench'} className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] ${activeView==='workbench'?'bg-zinc-800 text-emerald-300':'text-zinc-500 hover:text-zinc-200'}`}><LayoutDashboard className="h-3.5 w-3.5"/>Workbench</button>
+  <button onClick={()=>setActiveView('lab')} aria-pressed={activeView==='lab'} className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] ${activeView==='lab'?'bg-zinc-800 text-cyan-300':'text-zinc-500 hover:text-zinc-200'}`}><Activity className="h-3.5 w-3.5"/>Simulation Lab <span className="rounded bg-cyan-950 px-1.5 py-0.5 text-[9px] text-cyan-300">50 missions</span></button>
+ </div>{activeView==='workbench'?<><div className="relative min-h-0 flex-1"><ReactFlowProvider><ClusterCanvas/></ReactFlowProvider></div><div className="h-36 shrink-0"><EventFeed/></div></>:<div className="min-h-0 flex-1"><SimulationLab/></div>}</main>
+ <aside className={`hidden lg:flex shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width] duration-200 ${rightOpen?'w-80':'w-12'}`}>
+  <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-2">{rightOpen&&<span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Inspector</span>}<button onClick={()=>setRightOpen(v=>!v)} aria-label={rightOpen?'Collapse inspector':'Expand inspector'} title={rightOpen?'Collapse inspector':'Expand inspector'} className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">{rightOpen?<ChevronRight className="h-4 w-4"/>:<ChevronLeft className="h-4 w-4"/>}</button></div>
+  {rightOpen?<div className="min-h-0 flex-1 overflow-y-auto custom-scroll"><Inspector/></div>:<div className="flex justify-center pt-3 text-zinc-600"><PanelRight className="h-4 w-4"/></div>}
+ </aside></div><InspectorSheet/><EditDialog/><NodeInternalsDialog/><Toaster theme="dark"/></div>
 }
