@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Activity, ChevronDown, ChevronUp, Pause, Play, RotateCcw, StepForward, Target, Trophy } from 'lucide-react'
 import { useCluster } from '@/lib/cluster-store'
 import { engineStore, useEngineSnapshot } from '@/lib/engine-store'
-import type { DeploymentResource, HorizontalPodAutoscalerResource, PodResource } from '../../../engine/types'
+import type { DeploymentResource, HorizontalPodAutoscalerResource, PodResource, ReplicaSetResource } from '../../../engine/types'
 
 const meta = (name: string, namespace = 'default') => ({ name, namespace, uid: '', resourceVersion: 1, generation: 1, labels: {}, annotations: {}, creationTimestamp: 0 })
 
@@ -26,12 +26,16 @@ export function SimulationLab() {
   const hpas = resources.filter((resource): resource is HorizontalPodAutoscalerResource => resource.kind === 'HorizontalPodAutoscaler')
   const engineDeployments = resources.filter((resource): resource is DeploymentResource => resource.kind === 'Deployment')
   const pods = resources.filter((resource): resource is PodResource => resource.kind === 'Pod')
+  const replicaSets = resources.filter((resource): resource is ReplicaSetResource => resource.kind === 'ReplicaSet')
   const load = snapshot.simulatedLoadPercent ?? 100
   const activeHpa = hpas.find(item => item.spec.scaleTargetRef.name === targetName)
   const pending = challengePod ? pods.find(pod => pod.metadata.uid === challengePod) : undefined
   const pendingPassed = Boolean(pending && pending.status.phase === 'Running' && pending.status.conditions.some(condition => condition.type === 'Ready' && condition.status))
   const rollout = rolloutTarget ? engineDeployments.find(item => item.metadata.uid === rolloutTarget) : undefined
-  const rolloutPassed = Boolean(rollout && rollout.spec.strategy?.type === 'RollingUpdate' && (rollout.spec.strategy.maxUnavailable ?? 0) === 0 && rollout.status.availableReplicas >= rollout.spec.replicas && rollout.status.updatedReplicas >= rollout.spec.replicas)
+  const rolloutSets = rollout ? replicaSets.filter(item => item.ownerReferences?.some(owner => owner.kind === 'Deployment' && owner.uid === rollout.metadata.uid)) : []
+  const newestRevision = [...rolloutSets].sort((a,b) => Number(b.metadata.annotations['deployment.kubernetes.io/revision'] ?? 0) - Number(a.metadata.annotations['deployment.kubernetes.io/revision'] ?? 0))[0]
+  const oldRevisions = newestRevision ? rolloutSets.filter(item => item.metadata.uid !== newestRevision.metadata.uid) : []
+  const rolloutPassed = Boolean(rollout && newestRevision && rollout.spec.strategy?.type === 'RollingUpdate' && (rollout.spec.strategy.maxUnavailable ?? 0) === 0 && newestRevision.status.readyReplicas >= rollout.spec.replicas && oldRevisions.every(item => item.spec.replicas === 0))
   const startPending = () => {
     createResource({kind:'pod',name:'pending-debug',namespace:'default',image:'nginx:1.28',nodeSelector:{'kubernetes.io/hostname':'missing-worker'}})
     const created = useCluster.getState().pods.at(-1)
