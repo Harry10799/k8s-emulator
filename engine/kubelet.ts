@@ -1,4 +1,5 @@
 import type { EngineState, PodResource } from "./types";
+import { evaluateProbe } from "./probes";
 import { appendEvent, putResource } from "./resources";
 import { imageAvailable, imagePullDurationTicks, isImageCached, cacheImage } from "./image-registry";
 import type { RandomSource } from "./types";
@@ -7,14 +8,6 @@ function setPodReady(pod: PodResource, ready: boolean, reason: string): void {
   const condition = pod.status.conditions.find((item) => item.type === "Ready");
   if (condition) { condition.status = ready; condition.reason = reason; }
   else pod.status.conditions.push({ type: "Ready", status: ready, reason });
-}
-
-function probeFails(probe: NonNullable<PodResource["spec"]["containers"][number]["readinessProbe"]>, tick: number, startedAt: number): boolean {
-  const delay = Math.max(0, probe.initialDelayTicks ?? 0);
-  const period = Math.max(1, probe.periodTicks ?? 1);
-  if (tick - startedAt < delay) return false;
-  if ((tick - startedAt - delay) % period !== 0) return false;
-  return probe.failureTicks?.includes(tick) ?? false;
 }
 
 function restartContainer(pod: PodResource, status: PodResource["status"]["containerStatuses"][number], reason: NonNullable<typeof status.lastTerminationReason>, exitCode: number, state: EngineState): void {
@@ -114,43 +107,25 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource, rng: R
     const startup = spec.startupProbe;
     const startupSucceeded = !startup || !startup.failureTicks?.includes(state.tick);
     if (startup && state.tick - started >= (startup.initialDelayTicks ?? 0)) {
-      const last = status.lastProbeTick!.startup;
-      const period = Math.max(1, startup.periodTicks ?? 1);
-      if (last < 0 || state.tick - last >= period) {
-        status.lastProbeTick!.startup = state.tick;
-        if (!startupSucceeded) status.consecutiveProbeFailures!.startup += 1;
-        else status.consecutiveProbeFailures!.startup = 0;
-        if (status.consecutiveProbeFailures!.startup >= Math.max(1, startup.failureThreshold ?? 3)) {
-          restartContainer(pod, status, "StartupProbeFailed", 1, state);
-          continue;
-        }
+      const result = evaluateProbe(status, "startup", startup, state.tick, started, 3);
+      if (result.thresholdReached) {
+        restartContainer(pod, status, "StartupProbeFailed", 1, state);
+        continue;
       }
     }
-    const startupComplete = !startup || status.consecutiveProbeFailures!.startup === 0 && state.tick - started >= (startup.initialDelayTicks ?? 0);
+    const startupComplete = !startup || (status.consecutiveProbeFailures?.startup ?? 0) === 0 && state.tick - started >= (startup.initialDelayTicks ?? 0);
     if (!startupComplete) { status.ready = false; continue; }
 
     const readiness = spec.readinessProbe;
     let ready = true;
     if (readiness) {
-      const last = status.lastProbeTick!.readiness;
-      const period = Math.max(1, readiness.periodTicks ?? 1);
-      if (state.tick - started >= (readiness.initialDelayTicks ?? 0) && (last < 0 || state.tick - last >= period)) {
-        status.lastProbeTick!.readiness = state.tick;
-        if (probeFails(readiness, state.tick, started)) status.consecutiveProbeFailures!.readiness += 1;
-        else status.consecutiveProbeFailures!.readiness = 0;
-      }
-      ready = status.consecutiveProbeFailures!.readiness < Math.max(1, readiness.failureThreshold ?? 1);
+      const result = evaluateProbe(status, "readiness", readiness, state.tick, started, 1);
+      ready = !result.thresholdReached;
     }
     const liveness = spec.livenessProbe;
     if (liveness) {
-      const last = status.lastProbeTick!.liveness;
-      const period = Math.max(1, liveness.periodTicks ?? 1);
-      if (state.tick - started >= (liveness.initialDelayTicks ?? 0) && (last < 0 || state.tick - last >= period)) {
-        status.lastProbeTick!.liveness = state.tick;
-        if (probeFails(liveness, state.tick, started)) status.consecutiveProbeFailures!.liveness += 1;
-        else status.consecutiveProbeFailures!.liveness = 0;
-      }
-      if (status.consecutiveProbeFailures!.liveness >= Math.max(1, liveness.failureThreshold ?? 3)) {
+      const result = evaluateProbe(status, "liveness", liveness, state.tick, started, 3);
+      if (result.thresholdReached) {
         restartContainer(pod, status, "LivenessProbeFailed", 1, state);
         continue;
       }

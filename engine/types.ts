@@ -73,6 +73,23 @@ export interface PodSpec {
 
 export type PodPhase = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
 
+export interface ContainerStatus {
+  name: string;
+  usage?: { cpuMilli: number; memoryMi: number; cpuThrottledMilli: number };
+  ready: boolean;
+  restartCount: number;
+  state: "Waiting" | "Running" | "Terminated";
+  waitingReason?: "ContainerCreating" | "ErrImagePull" | "ImagePullBackOff" | "CrashLoopBackOff";
+  lastTerminationReason?: "Error" | "OOMKilled" | "Completed" | "LivenessProbeFailed" | "StartupProbeFailed";
+  exitCode?: number;
+  startedAtTick?: number;
+  consecutiveProbeFailures?: { startup: number; readiness: number; liveness: number };
+  lastProbeTick?: { startup: number; readiness: number; liveness: number };
+  nextRestartTick?: number;
+  imagePullAttempts?: number;
+  nextPullTick?: number;
+}
+
 export interface PodResource {
   apiVersion: "v1";
   kind: "Pod";
@@ -83,22 +100,7 @@ export interface PodResource {
     conditions: Array<{ type: "Ready" | "PodScheduled"; status: boolean; reason?: string; message?: string }>;
     qosClass?: "Guaranteed" | "Burstable" | "BestEffort";
     resourceUsage?: { cpuMilli: number; memoryMi: number; cpuThrottledMilli: number };
-    containerStatuses: Array<{
-      name: string;
-      usage?: { cpuMilli: number; memoryMi: number; cpuThrottledMilli: number };
-      ready: boolean;
-      restartCount: number;
-      state: "Waiting" | "Running" | "Terminated";
-      waitingReason?: "ContainerCreating" | "ErrImagePull" | "ImagePullBackOff" | "CrashLoopBackOff";
-      lastTerminationReason?: "Error" | "OOMKilled" | "Completed" | "LivenessProbeFailed" | "StartupProbeFailed";
-      exitCode?: number;
-      startedAtTick?: number;
-      consecutiveProbeFailures?: { startup: number; readiness: number; liveness: number };
-      lastProbeTick?: { startup: number; readiness: number; liveness: number };
-      nextRestartTick?: number;
-      imagePullAttempts?: number;
-      nextPullTick?: number;
-    }>;
+    containerStatuses: ContainerStatus[];
   };
   ownerReferences?: OwnerReference[];
 }

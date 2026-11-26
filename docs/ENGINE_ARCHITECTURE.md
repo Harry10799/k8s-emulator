@@ -52,7 +52,7 @@ The resource-management stage classifies Pods as Guaranteed, Burstable, or BestE
 
 ## Kubelet implementation boundary
 
-Container lifecycle and probe evaluation live in engine/kubelet.ts, separate from controller orchestration. Restart backoff is a container waiting state: after a container has started, a Pod remains Running while that container is in CrashLoopBackOff. Startup probe failures have their own StartupProbeFailed termination reason. The engine scheduler uses an in-place internal stage inside step(), avoiding a second full-state clone; the exported schedulePendingPods helper remains immutable for isolated callers.
+Container lifecycle lives in engine/kubelet.ts, while the startup/readiness/liveness probe state machine is isolated in engine/probes.ts. Restart backoff is a container waiting state: after a container has started, a Pod remains Running while that container is in CrashLoopBackOff. Startup probe failures have their own StartupProbeFailed termination reason. The engine scheduler uses an in-place internal stage inside step(), avoiding a second full-state clone; the exported schedulePendingPods helper remains immutable for isolated callers.
 
 The canvas now uses a persistent EngineState for Pod scheduling and kubelet lifecycle. The canvas store still owns the non-Deployment controller loops and projects engine Pod status into its existing UI model; the complete all-resource single-source-of-truth migration is not yet finished.
 
