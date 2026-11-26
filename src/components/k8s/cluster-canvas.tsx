@@ -40,10 +40,23 @@ export function ClusterCanvas() {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
 
+  const engineNodeSignature = nodes.map(n => n.id + ":" + n.name + ":" + n.cpuCapacity + ":" + n.memCapacity + ":" + n.role).join("|")
+
+  useEffect(() => {
+    const engineNodes: NodeResource[] = nodes.map(n => ({
+      apiVersion: "v1", kind: "Node",
+      metadata: { name: n.name, uid: n.id, resourceVersion: 1, generation: 1, labels: { "kubernetes.io/hostname": n.name }, annotations: {}, creationTimestamp: 0 },
+      spec: { capacity: { cpuMilli: n.cpuCapacity, memoryMi: n.memCapacity }, ...(n.role === "control-plane" ? { taints: [{ key: "node-role.kubernetes.io/control-plane", effect: "NoSchedule" as const }] } : {}) },
+      status: { conditions: [{ type: "Ready", status: true }], lastHeartbeatTick: 0, heartbeatEnabled: true },
+    }))
+    engineStore.reset(engineNodes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineNodeSignature])
+
   // simulation heartbeat
   useEffect(() => {
     if (!running) return
-    const interval = setInterval(() => tick(), 1000 / speed)
+    const interval = setInterval(() => { tick(); engineStore.tick() }, 1000 / speed)
     return () => clearInterval(interval)
   }, [running, speed, tick])
 
