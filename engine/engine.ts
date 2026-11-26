@@ -68,7 +68,7 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   next.tick += 1;
 
   const apiAvailable = next.controlPlane?.apiServerAvailable !== false && next.controlPlane?.etcdAvailable !== false;
-  if (apiAvailable) reconcileNodeHeartbeats(next);
+  if (apiAvailable && next.controlPlane?.controllerManagerAvailable !== false) reconcileNodeHeartbeats(next);
   if (apiAvailable && next.controlPlane?.controllerManagerAvailable !== false) { evictNotReadyPods(next); reconcileControllers(next); }
 
   if (apiAvailable && next.controlPlane?.schedulerAvailable !== false) schedulePendingPodsInPlace(next);

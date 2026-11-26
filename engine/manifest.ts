@@ -1,6 +1,6 @@
 import type { EngineState, KubernetesResource } from "./types";
 import { createResource, deleteResource, listResources, scaleResource, updateResource } from "./api";
-import { resourceKey } from "./resources";
+
 
 function scalar(raw:string):unknown {
  const v=raw.trim(); if(!v)return "";

@@ -60,6 +60,7 @@ export interface Toleration {
   operator?: "Equal" | "Exists";
   value?: string;
   effect?: "NoSchedule" | "PreferNoSchedule" | "NoExecute";
+  tolerationSeconds?: number;
 }
 
 export interface PodSpec {

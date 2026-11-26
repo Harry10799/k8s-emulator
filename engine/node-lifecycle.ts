@@ -14,6 +14,7 @@ export function reconcileNodeHeartbeats(state: EngineState): void {
     const index = node.spec.taints.findIndex(t => t.key === "node.kubernetes.io/not-ready");
     if (!ready && index < 0) node.spec.taints.push({key:"node.kubernetes.io/not-ready",effect:"NoExecute"});
     if (ready && index >= 0) node.spec.taints.splice(index,1);
+    if (ready) node.status.notReadySinceTick = undefined;
     putResource(state,node);
     appendEvent(state,ready?"Normal":"Warning",ready?"NodeReady":"NodeNotReady",ready?`Node ${node.metadata.name} is Ready`:`Node ${node.metadata.name} stopped reporting heartbeats and is NotReady`,node.metadata.name);
   }
@@ -55,8 +56,9 @@ export function evictNotReadyPods(state:EngineState):void {
   for(const pod of Object.values(state.resources).filter((r):r is PodResource=>r.kind==="Pod"&&!!r.spec.nodeName&&r.status.phase==="Running")){
     const node=Object.values(state.resources).find((r):r is NodeResource=>r.kind==="Node"&&r.metadata.name===pod.spec.nodeName);
     if(!node||node.status.conditions.find(c=>c.type==="Ready")?.status!==false)continue;
-    const tolerates=(pod.spec.tolerations??[]).some(t=>t.key==="node.kubernetes.io/not-ready"&&t.effect==="NoExecute");
+    const toleration=(pod.spec.tolerations??[]).find(t=>t.key==="node.kubernetes.io/not-ready"&&t.effect==="NoExecute");
+    const grace=toleration ? (toleration.tolerationSeconds ?? Number.POSITIVE_INFINITY) : timeout;
     const since=node.status.notReadySinceTick??state.tick;node.status.notReadySinceTick??=state.tick;
-    if(!tolerates&&state.tick-since>=timeout){pod.status.phase="Failed";pod.status.conditions=[...pod.status.conditions,{type:"Ready",status:false,reason:"NodeNotReady",message:"Pod evicted after node became NotReady"}];putResource(state,pod);appendEvent(state,"Warning","NodeNotReadyEviction",`Evicted ${pod.metadata.name} after node ${node.metadata.name} became NotReady`,pod.metadata.name);}
+    if(state.tick-since>=grace){pod.status.phase="Failed";pod.status.conditions=[...pod.status.conditions,{type:"Ready",status:false,reason:"NodeNotReady",message:"Pod evicted after node became NotReady"}];putResource(state,pod);appendEvent(state,"Warning","NodeNotReadyEviction",`Evicted ${pod.metadata.name} after node ${node.metadata.name} became NotReady`,pod.metadata.name);}
   }
 }
