@@ -24,9 +24,9 @@ export function useTraffic(activeNamespace: string) {
     const service = state.services.find(item => item.namespace === ingress.namespace && item.name === ingress.serviceName)
     if (!service) { setTrafficMessage(`Ingress ${ingress.name} has no matching Service backend`); return }
     const result = engineStore.simulateTraffic(ingress.namespace, service.name)
-    if (!result.ok) { setTrafficMessage(`Request ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} · ${result.reason}`); return }
+    if (!result.podName) { setTrafficMessage(`Request ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} · ${result.reason}`); return }
     const podId = state.pods.find(pod => pod.namespace === ingress.namespace && pod.name === result.podName)?.id ?? ''
-    setTrafficMessage(`${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% modeled error rate`)
+    setTrafficMessage(`${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% modeled error rate${result.ok ? '' : ' · upstream error'}`)
     setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId })
   }, [activeNamespace, selectedIngressId])
   return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest, trafficRps, setTrafficRps }

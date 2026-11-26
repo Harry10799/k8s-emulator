@@ -583,7 +583,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const specChanged = next.image !== dep.image || next.cpuRequest !== dep.cpuRequest || next.memRequest !== dep.memRequest || JSON.stringify(next.envConfigMaps ?? []) !== JSON.stringify(dep.envConfigMaps ?? []) || JSON.stringify(next.envSecrets ?? []) !== JSON.stringify(dep.envSecrets ?? [])
           if (specChanged) next.revision = dep.revision + 1
           s.deployments = state.deployments.map((d) => (d.id === id ? next : d))
-          logEvent(s, 'Normal', specChanged ? 'RolloutStarted' : 'ScalingReplicaSet', specChanged ? `Deployment ${next.name}: image → ${next.image}, rolling out revision ${next.revision}` : `Deployment ${next.name} scaled to ${next.replicas}`, next.name)
+          logEvent(s, 'Normal', specChanged ? 'RolloutStarted' : 'ScalingReplicaSet', specChanged ? `Deployment ${next.name}: Pod template changed (image ${next.image}), rolling out revision ${next.revision}` : `Deployment ${next.name} scaled to ${next.replicas}`, next.name)
           break
         }
         case 'replicaset':
@@ -599,7 +599,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           if (specChanged) {
             // recreate all pods
             s.pods = state.pods.filter((p) => p.ownerId !== id)
-            logEvent(s, 'Normal', 'RollingUpdate', `DaemonSet ${next.name}: image → ${next.image}, restarting pods on every node`, next.name)
+            logEvent(s, 'Normal', 'RollingUpdate', `DaemonSet ${next.name}: Pod template changed (image ${next.image}), restarting Pods on every node`, next.name)
           }
           break
         }
@@ -611,7 +611,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           s.statefulSets = state.statefulSets.map((d) => (d.id === id ? next : d))
           if (specChanged) {
             s.pods = state.pods.filter((p) => p.ownerId !== id)
-            logEvent(s, 'Normal', 'RollingUpdate', `StatefulSet ${next.name}: image → ${next.image}, recreating pods in order`, next.name)
+            logEvent(s, 'Normal', 'RollingUpdate', `StatefulSet ${next.name}: Pod template changed (image ${next.image}), recreating Pods in ordinal order`, next.name)
           } else {
             logEvent(s, 'Normal', 'ScalingStatefulSet', `StatefulSet ${next.name} scaled to ${next.replicas} — ${next.replicas > sts.replicas ? 'creating' : 'removing'} ordinal pods`, next.name)
           }
