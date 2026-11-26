@@ -25,9 +25,13 @@ export function reconcileStatefulSets(state: EngineState): void {
       let volumeClaimName: string | undefined;
       const claimTemplate = statefulSet.spec.volumeClaimTemplate;
       if (claimTemplate && claimTemplate.storageGi > 0) {
-        volumeClaimName = `data-${name}`;
+        volumeClaimName = claimTemplate.claimName ?? `data-${name}`;
         const claimKey = `PersistentVolumeClaim:${statefulSet.metadata.namespace ?? "default"}/${volumeClaimName}`;
         let claim = state.resources[claimKey] as PersistentVolumeClaimResource | undefined;
+        if (!claim && claimTemplate.claimName) {
+          appendEvent(state, "Warning", "FailedMount", `StatefulSet ${statefulSet.metadata.name} is waiting for connected claim ${volumeClaimName}`, statefulSet.metadata.name);
+          break;
+        }
         if (!claim) {
           claim = { apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: createMetadata(state, volumeClaimName, statefulSet.metadata.namespace ?? "default"), spec: { storageGi: claimTemplate.storageGi, storageClassName: claimTemplate.storageClassName }, status: { phase: "Pending" } };
           putResource(state, claim);

@@ -33,7 +33,7 @@ export interface CanvasDaemonSet {
 }
 export interface CanvasStatefulSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; serviceName: string;
-  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; storageGi: number;
+  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; storageGi: number; claimName?: string;
 }
 export interface CanvasCronJob {
   id: string; name: string; namespace: string; schedule: string; image: string;
@@ -210,7 +210,7 @@ function toDaemonSet(item: CanvasDaemonSet, previous?: DaemonSetResource): Daemo
   return { apiVersion: "apps/v1", kind: "DaemonSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { selector: { matchLabels: { ...item.selector } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } } }, status: previous?.status ?? { desiredNumberScheduled: 0, currentNumberScheduled: 0, numberReady: 0, numberAvailable: 0, observedGeneration: 0 } };
 }
 function toStatefulSet(item: CanvasStatefulSet, previous?: StatefulSetResource): StatefulSetResource {
-  return { apiVersion: "apps/v1", kind: "StatefulSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { replicas: item.replicas, serviceName: item.serviceName, selector: { matchLabels: { app: item.labels.app ?? item.name } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } }, ...(item.storageGi > 0 ? { volumeClaimTemplate: { storageGi: item.storageGi, storageClassName: "standard" } } : {}) }, status: previous?.status ?? { replicas: 0, readyReplicas: 0, currentReplicas: 0, observedGeneration: 0 } };
+  return { apiVersion: "apps/v1", kind: "StatefulSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { replicas: item.replicas, serviceName: item.serviceName, selector: { matchLabels: { app: item.labels.app ?? item.name } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } }, ...(item.claimName || item.storageGi > 0 ? { volumeClaimTemplate: { storageGi: item.storageGi, storageClassName: "standard", ...(item.claimName ? { claimName: item.claimName } : {}) } } : {}) }, status: previous?.status ?? { replicas: 0, readyReplicas: 0, currentReplicas: 0, observedGeneration: 0 } };
 }
 function toJob(item: CanvasJob, previous?: JobResource): JobResource {
   const cronOwner = item.cronjobOwner ? controllerOwner(item.cronjobOwner,"CronJob",item.cronjobOwner) : undefined;

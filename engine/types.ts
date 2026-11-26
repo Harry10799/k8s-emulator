@@ -178,7 +178,7 @@ export interface StatefulSetResource {
   apiVersion: "apps/v1";
   kind: "StatefulSet";
   metadata: ObjectMetadata;
-  spec: { replicas: number; serviceName: string; selector: { matchLabels: Labels }; template: { metadata: { labels: Labels }; spec: PodSpec }; volumeClaimTemplate?: { storageGi: number; storageClassName: string } };
+  spec: { replicas: number; serviceName: string; selector: { matchLabels: Labels }; template: { metadata: { labels: Labels }; spec: PodSpec }; volumeClaimTemplate?: { storageGi: number; storageClassName: string; claimName?: string } };
   status: { replicas: number; readyReplicas: number; currentReplicas: number; observedGeneration: number };
   ownerReferences?: OwnerReference[];
 }

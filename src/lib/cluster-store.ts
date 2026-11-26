@@ -113,6 +113,7 @@ export interface StatefulSet {
   memRequest: number
   crashRate: number
   storageGi: number // volumeClaimTemplate size; 0 = no claims
+  claimName?: string // explicitly connected PVC, when set
 }
 
 export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer'

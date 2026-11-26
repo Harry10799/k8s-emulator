@@ -209,7 +209,7 @@ export function TopologyCanvas() {
       const pvc = state.pvcs.find((item) => item.id === pvcId)
       const statefulSet = state.statefulSets.find((item) => item.id === statefulSetId)
       if (!pvc || !statefulSet || pvc.namespace !== statefulSet.namespace) return
-      state.updateResource('statefulset', statefulSet.id, { storageGi: pvc.sizeGi })
+      state.updateResource('statefulset', statefulSet.id, { storageGi: pvc.sizeGi, claimName: pvc.name })
     }
   }, [])
 
@@ -482,6 +482,12 @@ export function TopologyCanvas() {
       for (const c of nsSecs) {
         for (const p of nsPods.filter((p) => p.envSecret === c.name)) {
           edges.push({ id: `e-sec-${c.id}-${p.id}`, source: nid('secret', c.id), target: nid('pod', p.id), style: secStyle })
+        }
+      }
+      // Explicit PVC → StatefulSet claim wiring.
+      for (const c of nsPvcs) {
+        for (const sts of nsSts.filter((item) => item.claimName === c.name)) {
+          edges.push({ id: `e-pvc-sts-${c.id}-${sts.id}`, source: nid('pvc', c.id), target: nid('statefulset', sts.id), style: pvcStyle })
         }
       }
       // pvc → pod it is mounted by (statefulset volumeClaimTemplate)
