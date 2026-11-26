@@ -1,7 +1,7 @@
-import type { CronJobResource, DaemonSetResource, EngineState, JobResource, NodeResource, PersistentVolumeClaimResource, PodResource, ServiceResource, StatefulSetResource } from "./types";
+import type { CronJobResource, DaemonSetResource, EngineState, JobResource, KubernetesResource, NodeResource, PersistentVolumeClaimResource, PodResource, ServiceResource, StatefulSetResource } from "./types";
 import { appendEvent, createMetadata, putResource, resourceKey } from "./resources";
 
-const values = <T extends { kind: string }>(state: EngineState, kind: T["kind"]): T[] =>
+const values = <T extends KubernetesResource>(state: EngineState, kind: T["kind"]): T[] =>
   Object.values(state.resources).filter((resource): resource is T => resource.kind === kind);
 const active = (pod: PodResource) => pod.status.phase !== "Succeeded" && pod.status.phase !== "Failed";
 const ready = (pod: PodResource) => pod.status.phase === "Running" && pod.status.conditions.some(condition => condition.type === "Ready" && condition.status);

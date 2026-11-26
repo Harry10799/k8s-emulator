@@ -17,16 +17,16 @@ step(state, rng) -> nextState
 
 ## Current simulation boundary
 
-This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The engine currently models Nodes, Pods, ReplicaSets, and Deployments. The Deployment controller retains revisioned ReplicaSets and performs readiness-gated rolling updates with surge/unavailable limits. The canvas adapter delegates Deployment desired-state decisions to this engine; the persistent canvas runtime now delegates Pod scheduling and kubelet/container lifecycle to the engine; non-Deployment controllers remain in the store.
+This is an educational emulator, not a real Kubernetes API server and not a drop-in replacement for Kubernetes. The engine models Nodes, Pods, ReplicaSets, Deployments, DaemonSets, StatefulSets, Jobs, CronJobs, PersistentVolumeClaims, and Services. The Deployment controller retains revisioned ReplicaSets and performs readiness-gated rolling updates with surge/unavailable limits. The canvas adapter delegates Deployment desired-state decisions to this engine; the persistent canvas runtime delegates Pod scheduling and kubelet/container lifecycle to the engine. First-class engine controllers now reconcile DaemonSets, StatefulSets, Jobs, CronJobs, PersistentVolumeClaims, and Services. The canvas still has a compatibility projection, so those controller loops are not yet fully removed from the interactive store.
 
-The canvas keeps its existing Zustand-facing data shape as a projection, while `engine/canvas-runtime.ts` retains one EngineState across ticks. Pod scheduling, image pulls, container lifecycle, probes, restarts and resource-pressure handling run in that persistent engine state. The remaining legacy controller loops (DaemonSet, StatefulSet, Job/CronJob, PVC, Service and related resources) are still scheduled for migration.
+The canvas keeps its existing Zustand-facing data shape as a projection, while `engine/canvas-runtime.ts` retains one EngineState across ticks. Pod scheduling, image pulls, container lifecycle, probes, restarts and resource-pressure handling run in that persistent engine state. The new controller module is covered by isolated engine tests. Wiring every existing canvas resource mutation and projection through these controllers is the next integration stage; avoid interpreting engine-level support as proof that all canvas CRUD paths have migrated.
 
 ## Directory map
 
 - `engine/types.ts`: resource and state contracts.
 - `engine/rng.ts`: seeded deterministic random source.
 - `engine/scheduler.ts`: scheduling filters and scoring.
-- `engine/reconcile.ts`: Deployment and ReplicaSet desired-state controllers plus status aggregation.
+- `engine/reconcile.ts`: Deployment and ReplicaSet desired-state controllers plus status aggregation.\n- `engine/controllers.ts`: DaemonSet, StatefulSet, Job, CronJob, PVC, and Service reconciliation.
 - `engine/engine.ts`: pure simulation step and resource insertion.
 - `tests/engine.test.ts`: deterministic engine behavior tests.
 
