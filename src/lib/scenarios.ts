@@ -43,7 +43,7 @@ function check(id:string,r:KubernetesResource[],c:ClusterState){
  case 'sc-33':return p.some(isReady)&&p.filter(isReady).every(x=>x.status.containerStatuses.every(y=>y.restartCount===0))
  case 'sc-34':return p.length>0&&p.every(isReady)
  case 'sc-35':return p.some(x=>x.status.qosClass==='Guaranteed')
- case 'sc-36':return n.every(x=>!x.status.conditions.some(y=>y.type==='MemoryPressure'&&y.status))
+ case 'sc-36':return n.length>0&&n.every(x=>!x.status.conditions.some(y=>y.type==='MemoryPressure'&&y.status))
  case 'sc-37':return h.some(x=>d.some(y=>y.metadata.name===x.spec.scaleTargetRef.name&&y.metadata.namespace===x.metadata.namespace))
  case 'sc-38':return h.some(x=>(x.status.currentCPUUtilizationPercentage??0)>x.spec.metrics[0]?.resource.target.averageUtilization&&x.status.desiredReplicas>x.status.currentReplicas)
  case 'sc-39':return h.some(x=>x.spec.minReplicas>=1&&x.spec.maxReplicas>x.spec.minReplicas)
