@@ -106,6 +106,7 @@ export function reconcileNodeResources(state: EngineState): void {
         if (ready) { ready.status = false; ready.reason = "Evicted"; }
         else pod.status.conditions.push({ type: "Ready", status: false, reason: "Evicted" });
         appendEvent(state, "Warning", "Evicted", `Pod ${pod.metadata.name} evicted from node ${node.metadata.name} due to memory pressure (QoS ${pod.status.qosClass})`, pod.metadata.name);
+        current.cpuMilli -= podUsage.cpuMilli;
         current.memoryMi -= podUsage.memoryMi;
       }
     }
