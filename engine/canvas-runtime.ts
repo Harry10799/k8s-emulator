@@ -183,8 +183,17 @@ function toPvc(item: CanvasPvc, previous?: PersistentVolumeClaimResource): Persi
   return { apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: makeMeta(previous,item.name,item.namespace,item.id,{},item.createdTick), spec: { storageGi: item.sizeGi, storageClassName: item.storageClass }, status: previous?.status ?? (item.status === "Bound" ? { phase: "Bound", volumeName: `pv-${item.id}`, boundAtTick: item.createdTick } : { phase: "Pending" }) };
 }
 function toService(item: CanvasService, previous?: ServiceResource, tick = 0): ServiceResource {
-  const createdAt = previous?.metadata.creationTimestamp ?? tick - 1 - (item.type === "LoadBalancer" ? 5 - item.lbTicks : 0);
-  return { apiVersion: "v1", kind: "Service", metadata: makeMeta(previous,item.name,item.namespace,item.id,{},createdAt), spec: { type: item.type, selector: { ...item.selector }, port: item.port, targetPort: item.targetPort, protocol: item.protocol }, status: previous?.status ?? { clusterIP: item.clusterIP, ...(item.nodePort ? { nodePort: item.nodePort } : {}), ...(item.externalIP ? { externalIP: item.externalIP } : {}), endpoints: [] } };
+  const typeChanged = Boolean(previous && previous.spec.type !== item.type);
+  const createdAt = typeChanged ? tick - 1 : previous?.metadata.creationTimestamp ?? tick - 1 - (item.type === "LoadBalancer" ? 5 - item.lbTicks : 0);
+  const serviceMetadata = makeMeta(previous,item.name,item.namespace,item.id,{},createdAt);
+  if (typeChanged) serviceMetadata.creationTimestamp = createdAt;
+  const status = previous && !typeChanged ? previous.status : {
+    clusterIP: previous?.status.clusterIP ?? item.clusterIP,
+    ...(item.type !== "ClusterIP" && item.nodePort ? { nodePort: item.nodePort } : {}),
+    ...(item.type === "LoadBalancer" && item.externalIP ? { externalIP: item.externalIP } : {}),
+    endpoints: [],
+  };
+  return { apiVersion: "v1", kind: "Service", metadata: serviceMetadata, spec: { type: item.type, selector: { ...item.selector }, port: item.port, targetPort: item.targetPort, protocol: item.protocol }, status };
 }
 
 function projectControllers(input: CanvasControllers, state: EngineState): CanvasControllers {
