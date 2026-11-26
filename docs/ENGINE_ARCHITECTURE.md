@@ -71,3 +71,10 @@ The kubelet consults a simulated image catalogue rather than interpreting image-
 `engine/canvas-runtime.ts` owns the retained simulation state and publishes snapshots to subscribers after each engine tick. `src/lib/engine-store.ts` exposes the same state through `useSyncExternalStore` and routes API operations and node/control-plane actions to it; it no longer maintains a parallel simulation clock or duplicate state. The canvas shows a compact Cluster health panel rather than a separate terminal console. Node projection preserves heartbeat, Ready condition, taints and cordon state between ticks.
 
 The remaining compatibility boundary is explicit: legacy canvas CRUD forms still update Zustand first, then the runtime synchronizes those objects into EngineState during the next simulation tick. The final migration is to route those create/update/delete/scale actions through the engine API and make the canvas a read-only projection.
+
+
+## Interactive topology and request path
+
+Topology cards expose connectable handles. The canvas accepts only supported source/target pairs and same-namespace relationships. Connections update the backing cluster resource through the existing edit action: Service selectors are copied from Deployment selectors, Ingress backends are set to the selected Service, ConfigMap/Secret references are written to Pods, and PVC size configures the connected StatefulSet storage template.
+
+The topology view also provides a deterministic single-request exercise. It resolves the first visible Ingress, finds its configured Service, then selects a Running Pod matching the Service selector. Only that client → Ingress → Service → Pod path is highlighted during the request animation. Missing Ingress, Service backend, or ready endpoint is reported rather than fabricating a successful response. This is a simplified educational data-plane simulation, not a full kube-proxy or ingress-controller implementation.

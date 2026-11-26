@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -13,6 +13,7 @@ import {
   type Node,
   type NodeProps,
   type NodeTypes,
+  type Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -75,7 +76,7 @@ function TopoCard({ data }: NodeProps<TopoCardNode>) {
     >
       <div className="flex items-center gap-2">
         {/* invisible handles so v13 can wire edges (card → card, left → right) */}
-        <Handle type="target" position={Position.Left} isConnectable={false} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
+        <Handle type="target" position={Position.Left} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-transparent !opacity-0 !pointer-events-none" />
         <Icon className="h-4 w-4 shrink-0" style={{ color: data.color }} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -127,6 +128,90 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
+  const [trafficRoute, setTrafficRoute] = useState<{ ingressId: string; serviceId: string; podId: string } | null>(null)
+  const [trafficMessage, setTrafficMessage] = useState('')
+
+  useEffect(() => {
+    if (!trafficRoute) return
+    const timer = window.setTimeout(() => setTrafficRoute(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [trafficRoute])
+
+  const sendRequest = useCallback(() => {
+    const state = useCluster.getState()
+    const ingress = state.ingresses.find((item) => activeNamespace === 'all' || item.namespace === activeNamespace)
+    if (!ingress) {
+      setTrafficMessage('No Ingress found in the selected namespace')
+      return
+    }
+    const service = state.services.find((item) => item.namespace === ingress.namespace && item.name === ingress.serviceName)
+    if (!service) {
+      setTrafficMessage(`Ingress ${ingress.name} has no matching Service backend`)
+      return
+    }
+    const pod = state.pods.find((item) =>
+      item.namespace === service.namespace &&
+      item.phase === 'Running' &&
+      selectorMatches(service.selector as Labels, item.labels)
+    )
+    if (!pod) {
+      setTrafficMessage(`Request rejected: Service ${service.name} has no ready endpoints`)
+      return
+    }
+    setTrafficMessage(`200 OK · ${ingress.host}${ingress.path} → ${service.name} → ${pod.name}`)
+    setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId: pod.id })
+  }, [activeNamespace])
+  
+  const onConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return
+    const state = useCluster.getState()
+    const source = connection.source
+    const target = connection.target
+    const id = (nodeId: string, kind: string) => nodeId.startsWith(`t-${kind}-`) ? nodeId.slice(kind.length + 3) : null
+    const svcId = id(source, 'service')
+    const depId = id(target, 'deployment')
+    if (svcId && depId) {
+      const service = state.services.find((item) => item.id === svcId)
+      const deployment = state.deployments.find((item) => item.id === depId)
+      if (!service || !deployment || service.namespace !== deployment.namespace) return
+      state.updateResource('service', service.id, { selector: { ...deployment.selector } })
+      return
+    }
+    const ingressId = id(source, 'ingress')
+    const targetServiceId = id(target, 'service')
+    if (ingressId && targetServiceId) {
+      const ingress = state.ingresses.find((item) => item.id === ingressId)
+      const service = state.services.find((item) => item.id === targetServiceId)
+      if (!ingress || !service || ingress.namespace !== service.namespace) return
+      state.updateResource('ingress', ingress.id, { serviceName: service.name })
+      return
+    }
+    const configMapId = id(source, 'configmap')
+    const secretId = id(source, 'secret')
+    const podId = id(target, 'pod')
+    if (podId && configMapId) {
+      const configMap = state.configMaps.find((item) => item.id === configMapId)
+      const pod = state.pods.find((item) => item.id === podId)
+      if (!configMap || !pod || configMap.namespace !== pod.namespace) return
+      state.updateResource('pod', pod.id, { envConfigMap: configMap.name })
+      return
+    }
+    if (podId && secretId) {
+      const secret = state.secrets.find((item) => item.id === secretId)
+      const pod = state.pods.find((item) => item.id === podId)
+      if (!secret || !pod || secret.namespace !== pod.namespace) return
+      state.updateResource('pod', pod.id, { envSecret: secret.name })
+      return
+    }
+    const pvcId = id(source, 'pvc')
+    const statefulSetId = id(target, 'statefulset')
+    if (pvcId && statefulSetId) {
+      const pvc = state.pvcs.find((item) => item.id === pvcId)
+      const statefulSet = state.statefulSets.find((item) => item.id === statefulSetId)
+      if (!pvc || !statefulSet || pvc.namespace !== statefulSet.namespace) return
+      state.updateResource('statefulset', statefulSet.id, { storageGi: pvc.sizeGi })
+    }
+  }, [])
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
     const visibleNs = namespaces.filter((n) => activeNamespace === 'all' || n.name === activeNamespace)
@@ -325,6 +410,22 @@ export function TopologyCanvas() {
       addCol(COLX.middle, mids)
       addCol(COLX.pods, podCards)
 
+      // External client is rendered only while a request is in flight.
+      if (trafficRoute) {
+        const ingressNode = cards.find((node) => node.id === nid('ingress', trafficRoute.ingressId))
+        if (ingressNode) {
+          cards.push({
+            id: 't-traffic-client',
+            type: 'topoCard',
+            position: { x: -240, y: ingressNode.position.y },
+            data: { selectionId: 'traffic:client', kind: 'client', name: 'external-client', sub: 'HTTP request', icon: Globe as LucideIcon, color: '#22d3ee', dot: '#22d3ee', dim: false },
+            selectable: false,
+            draggable: false,
+          } as TopoCardNode)
+          edges.push({ id: 'e-client-ingress', source: 't-traffic-client', target: nid('ingress', trafficRoute.ingressId), style: { stroke: '#22d3ee', strokeWidth: 3 } })
+        }
+      }
+
       // ---- edges
       // deployment → ReplicaSet (owner chain)
       for (const d of nsDeps) {
@@ -413,19 +514,24 @@ export function TopologyCanvas() {
 
     // Give every relationship a visible direction and animate the flow while the cluster is running.
     // React Flow's `animated` edge style is applied to the path itself; node handles remain non-connectable.
+    const activeTrafficEdges = trafficRoute ? new Set([
+      'e-client-ingress',
+      `e-ing-${trafficRoute.ingressId}-${trafficRoute.serviceId}`,
+      `e-svc-${trafficRoute.serviceId}-${trafficRoute.podId}`,
+    ]) : null
     const flowEdges: Edge[] = edges.map((edge) => {
-      const stroke = (edge.style?.stroke as string | undefined) ?? '#71717a'
+      const stroke = activeTrafficEdges?.has(edge.id) ? '#22d3ee' : (edge.style?.stroke as string | undefined) ?? '#71717a'
       return {
         ...edge,
         type: 'smoothstep',
-        animated: running,
+        animated: activeTrafficEdges ? activeTrafficEdges.has(edge.id) : running,
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
-        style: { ...edge.style, stroke, strokeWidth: Math.max(2, Number(edge.style?.strokeWidth ?? 1.5)) },
+        style: { ...edge.style, stroke, strokeWidth: activeTrafficEdges?.has(edge.id) ? 3 : Math.max(2, Number(edge.style?.strokeWidth ?? 1.5)) },
       }
     })
 
     return { flowNodes: [...frames, ...cards], flowEdges, total: totalRes }
-  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running])
+  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running, trafficRoute])
 
   return (
     <div className="relative h-full w-full bg-zinc-950">
@@ -445,7 +551,8 @@ export function TopologyCanvas() {
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.15}
         proOptions={{ hideAttribution: true }}
-        nodesConnectable={false}
+        nodesConnectable={true}
+        onConnect={onConnect}
         className="bg-zinc-950"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3f3f46" />
@@ -466,6 +573,13 @@ export function TopologyCanvas() {
           </div>
         </div>
       )}
+
+      <div className="absolute right-3 bottom-3 z-20 flex max-w-[min(420px,calc(100%-24px))] flex-col items-end gap-2">
+        <button onClick={sendRequest} className="rounded-lg border border-cyan-500/40 bg-cyan-950/90 px-3 py-2 text-[11px] font-semibold text-cyan-200 shadow-lg hover:bg-cyan-900">
+          <span className="mr-1.5">↗</span> Send test request
+        </button>
+        {trafficMessage && <div role="status" className="max-w-full rounded-lg border border-zinc-700 bg-zinc-900/95 px-3 py-2 text-right text-[10px] text-zinc-300 shadow-lg">{trafficMessage}</div>}
+      </div>
 
       {/* legend */}
       <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-zinc-800 bg-zinc-900/95 p-2.5 shadow-lg">
@@ -488,7 +602,7 @@ export function TopologyCanvas() {
           </div>
         ))}
         <div className="mt-1.5 border-t border-zinc-800 pt-1.5 text-[10px] text-zinc-500">
-          click card = inspect · double-click = edit
+          click card = inspect · double-click = edit · drag handle = wire resources
         </div>
       </div>
     </div>

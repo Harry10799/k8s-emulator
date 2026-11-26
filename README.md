@@ -49,3 +49,8 @@ The canvas has an integrated **Cluster health** panel in the upper-right. It sum
 The simulation and API adapter now share one retained EngineState. The engine's React adapter uses `useSyncExternalStore` and receives updates from the same runtime that advances the canvas. Existing palette and edit-dialog actions still pass through the compatibility-facing Zustand projection and are synchronized into the engine at simulation ticks; migrating every legacy CRUD action to direct API calls is the next cutover step. The YAML and kubectl engine modules remain available for a future native manifest/workflow surface, but are no longer presented as a floating console.
 
 The simulator is educational and does not provide full Kubernetes API compatibility, admission, RBAC, PDB, or all kubectl flags.
+
+
+### Interactive topology and traffic
+
+The Topology view supports typed drag-to-connect relationships: Service → Deployment (copies the Deployment selector), Ingress → Service (sets the backend), ConfigMap/Secret → Pod (sets environment references), and PVC → StatefulSet (uses the claim size for the StatefulSet storage template). Use **Send test request** to simulate an HTTP request through the first matching Ingress, its Service, and a Running selector-matching Pod. Requests without a ready endpoint are rejected with an explanatory status.
