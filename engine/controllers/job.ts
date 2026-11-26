@@ -1,6 +1,6 @@
 import type { CronJobResource, EngineState, JobResource, PodResource } from "../types";
 import { appendEvent, putResource, resourceKey } from "../resources";
-import { active, owns, values } from "./shared";
+import { active, makePod, owns, values } from "./shared";
 
 export function reconcileJobs(state: EngineState): void {
   for (const job of values<JobResource>(state, "Job")) {

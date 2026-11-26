@@ -128,7 +128,7 @@ function toPod(pod: CanvasPod, nodes: CanvasNode[], previous?: PodResource): Pod
     metadata: metadata(pod.name, pod.namespace, pod.id, pod.labels, previous),
     spec: {
       containers: [{
-        name: "main", image: pod.image,
+        name: previous?.spec.containers[0]?.name ?? "main", image: pod.image,
         resources: { requests: { cpuMilli: pod.cpuRequest, memoryMi: pod.memRequest } },
         simulatedCrashRate: pod.crashRate,
         ...(pod.completionTicks !== null ? { runForTicks: pod.completionTicks, exitCode: 0 } : {}),

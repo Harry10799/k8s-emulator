@@ -147,8 +147,10 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource, rng: R
   }
   const allRunning = containers.every((spec) => pod.status.containerStatuses.find((item) => item.name === spec.name)?.state === "Running");
   const allReady = containers.every((spec) => pod.status.containerStatuses.find((item) => item.name === spec.name)?.ready);
-  if (allRunning) pod.status.phase = "Running";
-  else if (pod.status.phase !== "Failed" && pod.status.phase !== "Succeeded") pod.status.phase = "Pending";
+  const hasStarted = containers.some((spec) => pod.status.containerStatuses.find((item) => item.name === spec.name)?.startedAtTick !== undefined);
+  if (pod.status.phase !== "Failed" && pod.status.phase !== "Succeeded") {
+    pod.status.phase = allRunning || hasStarted ? "Running" : "Pending";
+  }
   setPodReady(pod, allRunning && allReady, allReady ? "ContainersReady" : "ContainersNotReady");
   putResource(state, pod);
 }

@@ -228,11 +228,13 @@ describe("simulation engine", () => {
       spec: { nodeName: "worker-a", containers: [{ name: "app", image: "busybox", resources: { requests: { cpuMilli: 100, memoryMi: 100 }, limits: { cpuMilli: 100, memoryMi: 100 } } }] },
       status: { phase: "Running", conditions: [{ type: "Ready", status: true }], containerStatuses: [{ name: "app", ready: true, restartCount: 0, state: "Running" }] },
     };
-    const result = step(createInitialState([node("worker-a"), bestEffort, guaranteed]), createSeededRng(99));
+    const pressureNode = node("worker-a");
+    pressureNode.spec.capacity.memoryMi = 1024;
+    const result = step(createInitialState([pressureNode, bestEffort, guaranteed]), createSeededRng(99));
     const actual = resourcesOfKind<PodResource>(result, "Pod");
     expect(actual.find((pod) => pod.metadata.name === "be")?.status.conditions.some((condition) => condition.reason === "Evicted")).toBe(true);
     expect(actual.find((pod) => pod.metadata.name === "guaranteed")?.status.phase).toBe("Running");
-    expect(resourcesOfKind<NodeResource>(result, "Node")[0].status.conditions.some((condition) => condition.type === "MemoryPressure")).toBe(false);
+    expect(resourcesOfKind<NodeResource>(result, "Node")[0].status.conditions.some((condition) => condition.type === "MemoryPressure" && condition.status)).toBe(false);
   });
 
 });

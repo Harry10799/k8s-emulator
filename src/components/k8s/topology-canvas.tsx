@@ -130,7 +130,7 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
-  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
+  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {

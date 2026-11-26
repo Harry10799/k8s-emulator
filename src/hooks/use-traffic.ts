@@ -29,5 +29,5 @@ export function useTraffic(activeNamespace: string) {
     setTrafficMessage(`${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% modeled error rate${result.ok ? '' : ' · upstream error'}`)
     setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId })
   }, [activeNamespace, selectedIngressId])
-  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest, trafficRps, setTrafficRps }
+  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, sendRequest, trafficRps, setTrafficRps }
 }
