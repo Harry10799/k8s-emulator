@@ -370,8 +370,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
 
   tick: () =>
     set((state) => {
-      const { nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount } = state
-      simulationHistory.push({ cluster: structuredClone({ nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount }), engine: structuredClone(getCanvasRuntimeState()) })
+      const { nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount, chaos } = state
+      simulationHistory.push({ cluster: structuredClone({ nodes, pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, events, tickCount, chaos }), engine: structuredClone(getCanvasRuntimeState()) })
       if (simulationHistory.length > HISTORY_LIMIT) simulationHistory.shift()
       const s: ClusterState = {
         ...state,

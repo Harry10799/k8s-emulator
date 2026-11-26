@@ -28,7 +28,7 @@ export function reconcileHorizontalPodAutoscalers(state: EngineState): void {
       hpa.status.lastScaleTick = state.tick;
       appendEvent(state,"Normal","SuccessfulRescale","HPA " + hpa.metadata.name + " scaled Deployment " + deployment.metadata.name + " from " + current + " to " + desired + " replicas (CPU " + utilization + "% / target " + target + "%)",hpa.metadata.name);
     }
-    hpa.status.currentReplicas = current; hpa.status.desiredReplicas = desired; hpa.status.currentCPUUtilizationPercentage = utilization;
+    hpa.status.currentReplicas = pods.length; hpa.status.desiredReplicas = desired; hpa.status.currentCPUUtilizationPercentage = utilization;
     hpa.status.conditions = [{type:"AbleToScale",status:true,reason:"ReadyForNewScale"},{type:"ScalingActive",status:true,reason:"ValidMetricFound"}];
     putResource(state,hpa);
   }
