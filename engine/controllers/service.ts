@@ -1,6 +1,6 @@
 import type { EngineState, PodResource, ServiceResource } from "../types";
 import { appendEvent, putResource } from "../resources";
-import { active, matches, values } from "./shared";
+import { active, matches, ready, values } from "./shared";
 
 export function reconcileServices(state: EngineState): void {
   const pods = values<PodResource>(state, "Pod");

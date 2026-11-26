@@ -284,7 +284,7 @@ function projectControllers(input: CanvasControllers, state: EngineState): Canva
 /** Synchronize the canvas projection into a retained EngineState, run one engine tick, and project resources back. */
 export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], pods: T[], tick: number, rng: RandomSource, controllers?: CanvasControllers): CanvasRuntimeResult<T> {
   const workerNodes = nodes.filter(node => node.role === "worker");
-  if (!engineState) engineState = createInitialState(workerNodes.map(toNode));
+  if (!engineState) engineState = createInitialState(workerNodes.map(node => toNode(node)));
   const previousEvents = new Set(engineState.events.map(event => event.id));
   const oldResources = engineState.resources;
   const resources = { ...oldResources };

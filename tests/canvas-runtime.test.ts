@@ -32,6 +32,9 @@ describe("persistent canvas runtime", () => {
     resetCanvasRuntime();
     const pod = { id: "pod-1", name: "web", namespace: "default", labels: { app: "web" }, phase: "Pending" as const, image: "nginx:1.27", cpuRequest: 100, memRequest: 64, restarts: 0, crashRate: 0, phaseTicks: 0, ageTicks: 0, requiredNode: null, completionTicks: null, nodeId: null, logs: [] };
     const first = advanceCanvasRuntime(nodes, [pod], 1, createSeededRng(1));
+    const node = Object.values(getCanvasRuntimeState().resources).find((resource): resource is NodeResource => resource.kind === "Node");
+    expect(node?.metadata).toMatchObject({ name: "worker-1", uid: "worker-1" });
+    expect(node?.metadata.resourceVersion).toBeGreaterThan(0);
     expect(first.pods[0].phase).toBe("Running");
     const second = advanceCanvasRuntime(nodes, first.pods, 2, createSeededRng(2));
     expect(second.pods[0].phase).toBe("Running");
