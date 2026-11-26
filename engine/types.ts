@@ -51,6 +51,8 @@ export interface ContainerSpec {
   simulatedCpuUsageMilli?: number;
   runForTicks?: number;
   exitCode?: number;
+  /** Probability of a process crash on each running tick; consumed from the injected RNG. */
+  simulatedCrashRate?: number;
 }
 
 export interface Toleration {
@@ -172,6 +174,8 @@ export interface EngineState {
   nextResourceVersion: number;
   resources: Record<string, KubernetesResource>;
   events: EngineEvent[];
+  /** Images cached per Node UID, independent from the global registry catalogue. */
+  imageCache: Record<string, string[]>;
 }
 
 export interface RandomSource {

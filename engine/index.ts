@@ -6,3 +6,4 @@ export * from "./rng";
 export * from "./scheduler";
 export * from "./types";
 export * from "./kubelet";
+export * from "./image-registry";

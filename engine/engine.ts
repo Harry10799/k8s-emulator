@@ -4,13 +4,15 @@ import { reconcileDeployments, reconcileReplicaSets, syncDeploymentStatuses } fr
 import { schedulePod } from "./scheduler";
 import { reconcileNodeResources } from "./resource-management";
 import { advancePodLifecycle } from "./kubelet";
+import { createInitialImageCache } from "./image-registry";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
-  const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [] };
+  const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [], imageCache: {} };
   for (const resource of resources) {
     state.resources[resourceKey(resource)] = structuredClone(resource);
     state.nextResourceVersion = Math.max(state.nextResourceVersion, resource.metadata.resourceVersion + 1);
   }
+  state.imageCache = createInitialImageCache(resources);
   return state;
 }
 
@@ -68,14 +70,11 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
 
   schedulePendingPodsInPlace(next);
 
-  for (const pod of getPods(next)) advancePodLifecycle(next, pod);
+  for (const pod of getPods(next)) advancePodLifecycle(next, pod, rng);
   reconcileNodeResources(next);
   reconcileReplicaSets(next);
   syncDeploymentStatuses(next);
 
-  // Seeded randomness is passed to controllers that need stochastic behavior; keeping it
-  // in the step contract makes replay deterministic as stochastic controllers are added.
-  void rng;
   return next;
 }
 

@@ -753,8 +753,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       // ---- chaos monkey ----
       if (s.chaos && t % 3 === 0) {
         const alive = s.pods.filter((p) => p.phase === 'Running')
-        if (alive.length > 0 && Math.random() < 0.5) {
-          const victim = alive[Math.floor(Math.random() * alive.length)]
+        if (alive.length > 0 && tickRng.next() < 0.5) {
+          const victim = alive[Math.floor(tickRng.next() * alive.length)]
           victim.phase = 'CrashLoopBackOff'
           victim.phaseTicks = 0
           victim.restarts += 1

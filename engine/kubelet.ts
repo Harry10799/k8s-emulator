@@ -1,5 +1,7 @@
 import type { EngineState, PodResource } from "./types";
 import { appendEvent, putResource } from "./resources";
+import { imageAvailable, imagePullDurationTicks, isImageCached, cacheImage } from "./image-registry";
+import type { RandomSource } from "./types";
 
 function setPodReady(pod: PodResource, ready: boolean, reason: string): void {
   const condition = pod.status.conditions.find((item) => item.type === "Ready");
@@ -39,7 +41,7 @@ function restartContainer(pod: PodResource, status: PodResource["status"]["conta
     `Container ${status.name} in pod ${pod.metadata.name} terminated (${reason}, exit ${exitCode}); restart in ${backoff} tick(s)`, pod.metadata.name);
 }
 
-export function advancePodLifecycle(state: EngineState, pod: PodResource): void {
+export function advancePodLifecycle(state: EngineState, pod: PodResource, rng: RandomSource): void {
   if (!pod.spec.nodeName || pod.status.phase === "Succeeded" || pod.status.phase === "Failed") return;
   const containers = pod.spec.containers;
   if (!containers.length) return;
@@ -55,7 +57,7 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource): void 
 
     if (status.state === "Terminated" || status.state === "Waiting") {
       if (status.waitingReason === "CrashLoopBackOff" && state.tick < (status.nextRestartTick ?? state.tick + 1)) continue;
-      if (/(^|[/:])(?:not-found|does-not-exist|invalid-image)(?=[:@/]|$)/i.test(spec.image)) {
+      if (!imageAvailable(spec.image)) {
         if (state.tick < (status.nextPullTick ?? state.tick)) continue;
         status.imagePullAttempts = (status.imagePullAttempts ?? 0) + 1;
         status.state = "Waiting";
@@ -67,6 +69,20 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource): void 
           `Failed to pull image "${spec.image}" for container ${spec.name}; retry in ${backoff} tick(s)`, pod.metadata.name);
         continue;
       }
+      if (!isImageCached(state, pod.spec.nodeName, spec.image)) {
+        if (status.nextPullTick === undefined) {
+          const duration = imagePullDurationTicks(spec.image);
+          status.state = "Waiting";
+          status.waitingReason = "ContainerCreating";
+          status.ready = false;
+          status.nextPullTick = state.tick + duration;
+          appendEvent(state, "Normal", "Pulling", `Pulling image "${spec.image}" for container ${spec.name} (${duration} tick(s))`, pod.metadata.name);
+          if (duration > 0) continue;
+        }
+        if (state.tick < (status.nextPullTick ?? state.tick)) continue;
+        cacheImage(state, pod.spec.nodeName, spec.image);
+      }
+      status.nextPullTick = undefined;
       status.state = "Running";
       status.ready = false;
       status.waitingReason = undefined;
@@ -87,6 +103,11 @@ export function advancePodLifecycle(state: EngineState, pod: PodResource): void 
     }
     if (spec.runForTicks !== undefined && state.tick - started >= spec.runForTicks) {
       restartContainer(pod, status, "Completed", spec.exitCode ?? 0, state);
+      continue;
+    }
+    const crashRate = Math.max(0, Math.min(1, spec.simulatedCrashRate ?? 0));
+    if (crashRate > 0 && rng.next() < crashRate) {
+      restartContainer(pod, status, "Error", 1, state);
       continue;
     }
 
