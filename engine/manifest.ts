@@ -102,6 +102,7 @@ export function runKubectl(state:EngineState,command:string,stdin?:string):Kubec
   if(verb==="delete"){const x=deleteResource(state,kind,name,ns);return x.ok&&x.state?{state:x.state,output:"deleted "+kind.toLowerCase()+"/"+name}:{state,output:x.error??"delete failed",error:true}}
   if(verb==="scale"){const replicas=Number(args.find(x=>x.startsWith("--replicas="))?.split("=")[1]);if(!Number.isFinite(replicas))return{state,output:"missing --replicas=N",error:true};if(!["Deployment","ReplicaSet","StatefulSet"].includes(kind))return{state,output:"scale supports Deployment, ReplicaSet and StatefulSet",error:true};const x=scaleResource(state,kind,name,replicas,ns);return x.ok&&x.state?{state:x.state,output:"scaled "+kind.toLowerCase()+"/"+name+" to "+replicas}:{state,output:x.error??"scale failed",error:true}
  }
+ }
  if(verb==="apply"){const fileIndex=args.indexOf("-f");if(fileIndex<0)return{state,output:"usage: kubectl apply -f -",error:true};if(args[fileIndex+1]!=="-"||!stdin)return{state,output:"provide manifest content through stdin (the YAML editor)",error:true};try{const applied=applyManifests(state,stdin);return{state:applied.state,output:applied.messages.join("\n")}}catch(error){return{state,output:error instanceof Error?error.message:String(error),error:true}}}
  return{state,output:"unsupported command: "+command,error:true};
 }
