@@ -39,7 +39,7 @@ function restartContainer(pod: PodResource, status: PodResource["status"]["conta
     `Container ${status.name} in pod ${pod.metadata.name} terminated (${reason}, exit ${exitCode}); restart in ${backoff} tick(s)`, pod.metadata.name);
 }
 
-function advancePodLifecycle(state: EngineState, pod: PodResource): void {
+export function advancePodLifecycle(state: EngineState, pod: PodResource): void {
   if (!pod.spec.nodeName || pod.status.phase === "Succeeded" || pod.status.phase === "Failed") return;
   const containers = pod.spec.containers;
   if (!containers.length) return;
