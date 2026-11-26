@@ -84,6 +84,7 @@ describe("simulation engine", () => {
       pod.status.phase = "Pending";
       pod.spec.nodeName = undefined;
     }
+    afterStep.events = [];
     const before = structuredClone(afterStep);
     const scheduled = schedulePendingPods(afterStep);
     const scheduledPods = Object.values(scheduled.resources).filter((resource): resource is PodResource => resource.kind === "Pod");

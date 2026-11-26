@@ -370,12 +370,12 @@ function scheduleClusterWithEngine(pods: Pod[], nodes: K8sNode[], tick: number):
     const nodeId = nodeIds.get(resource.spec.nodeName)
     if (nodeId) assignments.set(resource.metadata.uid, nodeId)
   }
-  const namesById = new Map(pods.map((pod) => [pod.id, pod.name]))
   const failures = new Map<string, string>()
   for (const event of scheduled.events) {
     if (event.reason === 'FailedScheduling') {
-      const podId = pods.find((pod) => pod.name === event.object)?.id
-      if (podId) failures.set(podId, event.message)
+      for (const pod of pods) {
+        if (pod.name === event.object) failures.set(pod.id, event.message)
+      }
     }
   }
   return { assignments, failures }
