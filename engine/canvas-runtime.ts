@@ -1,8 +1,8 @@
 import { createInitialState, step } from "./engine";
 import { resourceKey } from "./resources";
 import type {
-  CronJobResource, DaemonSetResource, EngineEvent, EngineState, JobResource,
-  NodeResource, PersistentVolumeClaimResource, PodResource, RandomSource,
+  CronJobResource, DaemonSetResource, DeploymentResource, EngineEvent, EngineState, JobResource,
+  NodeResource, PersistentVolumeClaimResource, PodResource, RandomSource, ReplicaSetResource,
   ServiceResource, StatefulSetResource,
 } from "./types";
 
@@ -17,6 +17,15 @@ export interface CanvasPod {
   nodeId: string | null; logs: string[];
   ownerId?: string | null; ownerKind?: "replicaset" | "daemonset" | "statefulset" | "job" | "deployment" | "none";
   envConfigMap?: string | null; envSecret?: string | null; ports?: number[]; mountedPvc?: string | null;
+}
+export interface CanvasDeployment {
+  id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
+  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; revision: number;
+}
+export interface CanvasReplicaSet {
+  id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
+  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number;
+  revision: number; parentDeployment: string | null; superseded: boolean;
 }
 export interface CanvasDaemonSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
@@ -166,6 +175,25 @@ function makeMeta(previous: { metadata: { resourceVersion: number; generation: n
 }
 function controllerOwner(uid: string, kind: string, name: string) { return [{ uid, kind, name }]; }
 
+function toDeployment(item: CanvasDeployment, previous?: DeploymentResource): DeploymentResource {
+  const meta = makeMeta(previous,item.name,item.namespace,item.id,item.labels);
+  meta.generation = Math.max(1,item.revision);
+  return {
+    apiVersion:"apps/v1",kind:"Deployment",metadata:meta,
+    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}},strategy:{type:"RollingUpdate",maxSurge:1,maxUnavailable:0}},
+    status:previous?.status ?? {observedGeneration:0,replicas:0,updatedReplicas:0,readyReplicas:0,availableReplicas:0,conditions:[]},
+  };
+}
+function toReplicaSet(item: CanvasReplicaSet, previous?: ReplicaSetResource): ReplicaSetResource {
+  const meta = makeMeta(previous,item.name,item.namespace,item.id,item.labels);
+  meta.annotations["deployment.kubernetes.io/revision"] = String(item.revision);
+  return {
+    apiVersion:"apps/v1",kind:"ReplicaSet",metadata:meta,
+    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}}},
+    status:previous?.status ?? {observedGeneration:1,replicas:0,readyReplicas:0,availableReplicas:0},
+    ownerReferences:item.parentDeployment ? controllerOwner(item.parentDeployment,"Deployment",item.parentDeployment) : undefined,
+  };
+}
 function toDaemonSet(item: CanvasDaemonSet, previous?: DaemonSetResource): DaemonSetResource {
   return { apiVersion: "apps/v1", kind: "DaemonSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { selector: { matchLabels: { ...item.selector } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } } }, status: previous?.status ?? { desiredNumberScheduled: 0, currentNumberScheduled: 0, numberReady: 0, numberAvailable: 0, observedGeneration: 0 } };
 }
@@ -199,6 +227,19 @@ function toService(item: CanvasService, previous?: ServiceResource, tick = 0): S
 function projectControllers(input: CanvasControllers, state: EngineState): CanvasControllers {
   const resources = Object.values(state.resources);
   const byUid = <T extends { metadata: { uid: string } }>(uid: string, kind: string) => resources.find((resource) => resource.kind === kind && resource.metadata.uid === uid) as T | undefined;
+  const replicaSets: CanvasReplicaSet[] = resources.filter((r): r is ReplicaSetResource => r.kind === "ReplicaSet").map(resource => {
+    const container = resource.spec.template.spec.containers[0];
+    const parent = resource.ownerReferences?.find(owner => owner.kind === "Deployment")?.uid ?? null;
+    const deployment = (input.deployments ?? []).find(item => item.id === parent);
+    const revision = Number(resource.metadata.annotations["deployment.kubernetes.io/revision"] ?? 1);
+    return {
+      id:resource.metadata.uid,name:resource.metadata.name,namespace:resource.metadata.namespace ?? "default",
+      labels:{...resource.metadata.labels},selector:{...resource.spec.selector.matchLabels},replicas:resource.spec.replicas,
+      image:container?.image ?? "nginx:latest",cpuRequest:container?.resources.requests.cpuMilli ?? 500,
+      memRequest:container?.resources.requests.memoryMi ?? 512,crashRate:container?.simulatedCrashRate ?? 0,
+      revision,parentDeployment:parent,superseded:Boolean(deployment && (container?.image !== deployment.image || revision < deployment.revision)),
+    };
+  });
   const jobs: CanvasJob[] = resources.filter((r): r is JobResource => r.kind === "Job").map(resource => ({
     id: resource.metadata.uid, name: resource.metadata.name, namespace: resource.metadata.namespace ?? "default",
     image: resource.spec.template.spec.containers[0]?.image ?? "busybox:1.36",
@@ -225,7 +266,7 @@ function projectControllers(input: CanvasControllers, state: EngineState): Canva
     const elapsed = state.tick - resource.metadata.creationTimestamp;
     return { ...item, clusterIP: resource.status.clusterIP, nodePort: resource.status.nodePort ?? null, externalIP: resource.status.externalIP ?? null, lbTicks: Math.max(0, 5 - elapsed) };
   });
-  return { ...input, cronJobs, jobs, pvcs, services };
+  return { ...input, deployments: input.deployments ?? [], replicaSets, cronJobs, jobs, pvcs, services };
 }
 
 /** Synchronize the canvas projection into a retained EngineState, run one engine tick, and project resources back. */
@@ -235,7 +276,7 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   const previousEvents = new Set(engineState.events.map(event => event.id));
   const oldResources = engineState.resources;
   const resources = { ...oldResources };
-  const managedKinds = new Set(["Node", "Pod", "DaemonSet", "StatefulSet", "Job", "CronJob", "PersistentVolumeClaim", "Service"]);
+  const managedKinds = new Set(["Node", "Pod", "Deployment", "ReplicaSet", "DaemonSet", "StatefulSet", "Job", "CronJob", "PersistentVolumeClaim", "Service"]);
   for (const [key, resource] of Object.entries(resources)) if (managedKinds.has(resource.kind)) delete resources[key];
   for (const node of workerNodes) {
     const resource = toNode(node); resources[resourceKey(resource)] = resource;
@@ -248,6 +289,8 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
   }
   if (controllers) {
     const previousByUid = <T extends { metadata: { uid: string } }>(uid: string, kind: string) => Object.values(oldResources).find(resource => resource.kind === kind && resource.metadata.uid === uid) as T | undefined;
+    for (const item of controllers.deployments ?? []) { const resource = toDeployment(item,previousByUid<DeploymentResource>(item.id,"Deployment")); resources[resourceKey(resource)] = resource; }
+    for (const item of controllers.replicaSets ?? []) { const resource = toReplicaSet(item,previousByUid<ReplicaSetResource>(item.id,"ReplicaSet")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.daemonSets) { const resource = toDaemonSet(item,previousByUid<DaemonSetResource>(item.id,"DaemonSet")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.statefulSets) { const resource = toStatefulSet(item,previousByUid<StatefulSetResource>(item.id,"StatefulSet")); resources[resourceKey(resource)] = resource; }
     for (const item of controllers.jobs) { const resource = toJob(item,previousByUid<JobResource>(item.id,"Job")); resources[resourceKey(resource)] = resource; }

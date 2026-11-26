@@ -1,8 +1,6 @@
 'use client'
 
 import { create } from 'zustand'
-import { createInitialState } from '../../engine/engine'
-import { reconcileDeployments as reconcileDeploymentsEngine } from '../../engine/reconcile'
 import { createSeededRng } from '../../engine/rng'
 import { advanceCanvasRuntime, resetCanvasRuntime, type CanvasControllers } from '../../engine/canvas-runtime'
 
@@ -335,48 +333,6 @@ function basePod(over: Partial<Pod>): Pod {
 }
 
 
-/** Delegate Deployment and ReplicaSet desired-state decisions to the pure engine. */
-function reconcileDeploymentsWithEngine(deployments: Deployment[], replicaSets: ReplicaSet[], pods: Pod[], tick: number): ReplicaSet[] {
-  const deps = deployments.map((d) => ({
-    apiVersion: 'apps/v1' as const, kind: 'Deployment' as const,
-    metadata: { name: d.name, namespace: d.namespace, uid: d.id, resourceVersion: 1, generation: Math.max(1, d.revision), labels: { ...d.labels }, annotations: {}, creationTimestamp: 0 },
-    spec: { replicas: d.replicas, selector: { matchLabels: { ...d.selector } }, template: { metadata: { labels: { ...d.labels } }, spec: { containers: [{ name: 'main', image: d.image, resources: { requests: { cpuMilli: d.cpuRequest, memoryMi: d.memRequest } } }] } }, strategy: { type: 'RollingUpdate' as const, maxSurge: 1, maxUnavailable: 0 } },
-    status: { observedGeneration: 0, replicas: 0, updatedReplicas: 0, readyReplicas: 0, availableReplicas: 0, conditions: [] },
-  }));
-  const rss = replicaSets.map((r) => ({
-    apiVersion: 'apps/v1' as const, kind: 'ReplicaSet' as const,
-    metadata: { name: r.name, namespace: r.namespace, uid: r.id, resourceVersion: 1, generation: 1, labels: { ...r.labels }, annotations: { 'deployment.kubernetes.io/revision': String(r.revision) }, creationTimestamp: 0 },
-    spec: { replicas: r.replicas, selector: { matchLabels: { ...r.selector } }, template: { metadata: { labels: { ...r.labels } }, spec: { containers: [{ name: 'main', image: r.image, resources: { requests: { cpuMilli: r.cpuRequest, memoryMi: r.memRequest } } }] } } },
-    status: { observedGeneration: 1, replicas: pods.filter((p) => p.ownerId === r.id && p.phase !== 'Terminating' && p.phase !== 'Succeeded').length, readyReplicas: pods.filter((p) => p.ownerId === r.id && p.phase === 'Running').length, availableReplicas: pods.filter((p) => p.ownerId === r.id && p.phase === 'Running').length },
-    ownerReferences: r.parentDeployment ? [{ uid: r.parentDeployment, kind: 'Deployment', name: deployments.find((d) => d.id === r.parentDeployment)?.name ?? '' }] : [],
-  }));
-  const enginePods = pods.filter((p) => p.ownerKind === 'replicaset').map((p) => ({
-    apiVersion: 'v1' as const, kind: 'Pod' as const,
-    metadata: { name: p.name, namespace: p.namespace, uid: p.id, resourceVersion: 1, generation: 1, labels: { ...p.labels }, annotations: {}, creationTimestamp: p.ageTicks },
-    spec: { containers: [{ name: 'main', image: p.image, resources: { requests: { cpuMilli: p.cpuRequest, memoryMi: p.memRequest } } }] },
-    status: { phase: (p.phase === 'Running' ? 'Running' : p.phase === 'Succeeded' ? 'Succeeded' : p.phase === 'Terminating' ? 'Failed' : 'Pending') as 'Running' | 'Succeeded' | 'Failed' | 'Pending', conditions: [{ type: 'Ready' as const, status: p.phase === 'Running' }], containerStatuses: [] },
-    ownerReferences: [{ uid: p.ownerId ?? '', kind: 'ReplicaSet', name: replicaSets.find((r) => r.id === p.ownerId)?.name ?? '' }],
-  }));
-  const state = createInitialState([...deps, ...rss, ...enginePods]); state.tick = tick;
-  reconcileDeploymentsEngine(state);
-  return Object.values(state.resources).filter((r) => r.kind === 'ReplicaSet').map((resource) => {
-    if (resource.kind !== 'ReplicaSet') throw new Error('Unexpected resource kind');
-    const parent = resource.ownerReferences?.find((o) => o.kind === 'Deployment')?.uid ?? null;
-    const previous = replicaSets.find((r) => r.id === resource.metadata.uid);
-    const dep = deployments.find((d) => d.id === parent);
-    const c = resource.spec.template.spec.containers[0];
-    const revision = Number(resource.metadata.annotations['deployment.kubernetes.io/revision'] ?? previous?.revision ?? 1);
-    return {
-      id: previous?.id ?? uid('rs'), name: resource.metadata.name, namespace: resource.metadata.namespace ?? 'default',
-      labels: { ...resource.metadata.labels }, selector: { ...resource.spec.selector.matchLabels }, replicas: resource.spec.replicas,
-      image: c?.image ?? dep?.image ?? 'nginx:latest', cpuRequest: c?.resources.requests.cpuMilli ?? dep?.cpuRequest ?? 500,
-      memRequest: c?.resources.requests.memoryMi ?? dep?.memRequest ?? 512, crashRate: previous?.crashRate ?? dep?.crashRate ?? 0,
-      revision, parentDeployment: parent,
-      superseded: !!dep && (c?.image !== dep.image || revision < dep.revision),
-    };
-  });
-}
-
 export const useCluster = create<ClusterState>((set, get) => ({
   nodes: [
     { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
@@ -459,39 +415,6 @@ export const useCluster = create<ClusterState>((set, get) => ({
         if (p.phase === 'Succeeded' && p.phaseTicks >= 4) return false
         return true
       })
-
-      // ---- Deployment/ReplicaSet controllers (pure engine) ----
-      s.replicaSets = reconcileDeploymentsWithEngine(s.deployments, s.replicaSets, s.pods, t)
-
-      // ---- replicaset controller ----
-      for (const rs of s.replicaSets) {
-        const pods = ownedBy(rs.id).filter((p) => p.phase !== 'Terminating' && p.phase !== 'Succeeded')
-        if (pods.length < rs.replicas) {
-          const need = rs.replicas - pods.length
-          for (let i = 0; i < need; i++) {
-            s.pods.push(
-              basePod({
-                name: `${rs.name}-${rand(5)}-${rand(5)}`,
-                namespace: rs.namespace,
-                labels: { ...rs.labels, pod: rand(4) },
-                ownerId: rs.id,
-                ownerKind: 'replicaset',
-                image: rs.image,
-                cpuRequest: rs.cpuRequest,
-                memRequest: rs.memRequest,
-                crashRate: rs.crashRate,
-              }) as never
-            )
-            logEvent(s, 'Normal', 'SuccessfulCreate', `Created pod for ReplicaSet ${rs.name}`, rs.name)
-          }
-        } else if (pods.length > rs.replicas) {
-          for (const victim of pods.slice(rs.replicas)) {
-            victim.phase = 'Terminating'
-            victim.phaseTicks = 0
-            logEvent(s, 'Normal', 'Killing', `Stopping container ${victim.image} in pod ${victim.name}`, rs.name)
-          }
-        }
-      }
 
       // DaemonSet, StatefulSet, Job/CronJob, PVC and Service are reconciled by engine/controllers.ts.
 
@@ -854,7 +777,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
     set((state) => {
       const dep = state.deployments.find((d) => d.id === id)
       if (!dep) return state
-      const s = { ...state, events: [...state.events], deployments: state.deployments.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)), replicaSets: state.replicaSets.map((r) => (r.parentDeployment === id && !r.superseded ? { ...r, replicas: Math.max(0, replicas) } : r)) } as ClusterState
+      const s = { ...state, events: [...state.events], deployments: state.deployments.map((d) => (d.id === id ? { ...d, replicas: Math.max(0, replicas) } : d)), replicaSets: state.replicaSets } as ClusterState
       logEvent(s, 'Normal', 'ScalingReplicaSet', `Scaled deployment ${dep.name} from ${dep.replicas} to ${Math.max(0, replicas)}`, dep.name)
       return s
     }),
