@@ -42,7 +42,7 @@ The canvas keeps its existing Zustand-facing data shape as a projection, while `
 
 ## Container lifecycle simulation
 
-The kubelet stage now models per-container image-pull failures, startup/readiness/liveness probes, memory-limit OOM kills, finite process exits, restart policies, restart counts, and exponential restart backoff. Probe failures can be scheduled with explicit simulation ticks to keep scenarios deterministic. This is an educational approximation: image registry access and actual processes are not executed.
+The kubelet stage now models per-container image-pull failures, startup/readiness/liveness probes, memory-limit OOM kills, finite process exits, restart policies, restart counts, and exponential restart backoff. Probe failures can be scheduled with explicit simulation ticks to keep scenarios deterministic. This is an educational approximation: the registry is simulated and actual processes are not executed.
 
 
 ## Resource management and QoS

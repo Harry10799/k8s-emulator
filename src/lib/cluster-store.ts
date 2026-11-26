@@ -1071,6 +1071,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
 
   reset: () => {
     resetCanvasRuntime()
+    nextId = 1
     idRng = createSeededRng(0x5eed1234)
     set({
       nodes: [

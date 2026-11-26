@@ -97,6 +97,7 @@ function projectPod<T extends CanvasPod>(resource: PodResource, original: T, nod
   const waiting = container?.waitingReason;
   let phase: CanvasPod["phase"];
   if (resource.status.phase === "Succeeded") phase = "Succeeded";
+  else if (resource.status.phase === "Failed") phase = "Terminating";
   else if (waiting === "CrashLoopBackOff") phase = "CrashLoopBackOff";
   else if (resource.status.phase === "Running") phase = "Running";
   else if (resource.spec.nodeName) phase = "ContainerCreating";
@@ -142,7 +143,12 @@ export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], p
     return resource ? projectPod(resource, pod, workerNodes) : pod;
   });
   const byId = new Map(projected.map(pod => [pod.id, pod]));
-  const nextPods = pods.map(pod => byId.get(pod.id) ?? pod);
+  const nextPods = pods.map(pod => {
+    if (pod.phase === "Terminating" || pod.phase === "Succeeded") {
+      return { ...pod, ageTicks: pod.ageTicks + 1, phaseTicks: pod.phaseTicks + 1 };
+    }
+    return byId.get(pod.id) ?? pod;
+  });
   const events = engineState.events.filter(event => !previousEvents.has(event.id));
   return { pods: nextPods, events };
 }
