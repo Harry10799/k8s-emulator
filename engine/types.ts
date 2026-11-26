@@ -71,6 +71,8 @@ export interface PodSpec {
   tolerations?: Toleration[];
   restartPolicy?: "Always" | "OnFailure" | "Never";
   volumeClaimName?: string;
+  /** Template-level environment imports, inherited by controller-created Pods. */
+  envFrom?: Array<{ configMapRef?: { name: string }; secretRef?: { name: string } }>;
 }
 
 export type PodPhase = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";

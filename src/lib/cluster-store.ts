@@ -89,6 +89,8 @@ export interface Deployment {
   memRequest: number
   crashRate: number
   revision: number
+  envConfigMaps?: string[]
+  envSecrets?: string[]
 }
 
 export interface DaemonSet {
@@ -101,6 +103,8 @@ export interface DaemonSet {
   cpuRequest: number
   memRequest: number
   crashRate: number
+  envConfigMaps?: string[]
+  envSecrets?: string[]
 }
 
 export interface StatefulSet {
@@ -116,6 +120,8 @@ export interface StatefulSet {
   crashRate: number
   storageGi: number // volumeClaimTemplate size; 0 = no claims
   claimName?: string // explicitly connected PVC, when set
+  envConfigMaps?: string[]
+  envSecrets?: string[]
 }
 
 export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer'
@@ -398,6 +404,8 @@ export const useCluster = create<ClusterState>((set, get) => ({
       const runtime = advanceCanvasRuntime(s.nodes, s.pods, t, tickRng, {
         deployments: s.deployments,
         replicaSets: s.replicaSets,
+        
+        replicaSets: s.replicaSets,
         daemonSets: s.daemonSets,
         statefulSets: s.statefulSets,
         cronJobs: s.cronJobs,
@@ -489,7 +497,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           logEvent(s, 'Normal', 'Created', `Pod created: ${name} (ns/${(payload.namespace as string) ?? 'default'})`, name)
           break
         case 'deployment':
-          s.deployments = [...state.deployments, { id: uid('dep'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1 }]
+          s.deployments = [...state.deployments, { id: uid('dep'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'nginx:latest', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, revision: 1, envConfigMaps: [], envSecrets: [] }]
           logEvent(s, 'Normal', 'ScalingReplicaSet', `Deployment ${name} created with ${payload.replicas ?? 3} replica(s)`, name)
           break
         case 'replicaset':
@@ -497,11 +505,11 @@ export const useCluster = create<ClusterState>((set, get) => ({
           logEvent(s, 'Normal', 'SuccessfulCreate', `ReplicaSet ${name} created with ${payload.replicas ?? 2} replica(s)`, name)
           break
         case 'daemonset':
-          s.daemonSets = [...state.daemonSets, { id: uid('ds'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, image: (payload.image as string) ?? 'fluentd:latest', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: (payload.crashRate as number) ?? 0 }]
+          s.daemonSets = [...state.daemonSets, { id: uid('ds'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, selector: (payload.selector as Labels) ?? { app: name }, image: (payload.image as string) ?? 'fluentd:latest', cpuRequest: (payload.cpuRequest as number) ?? 100, memRequest: (payload.memRequest as number) ?? 128, crashRate: (payload.crashRate as number) ?? 0, envConfigMaps: [], envSecrets: [] }]
           logEvent(s, 'Normal', 'SuccessfulCreate', `DaemonSet ${name} created — one pod per node`, name)
           break
         case 'statefulset':
-          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, storageGi: (payload.storageGi as number) ?? 1 }]
+          s.statefulSets = [...state.statefulSets, { id: uid('sts'), name, namespace: (payload.namespace as string) ?? 'default', labels: (payload.labels as Labels) ?? { app: name }, serviceName: (payload.serviceName as string) ?? `${name}-headless`, replicas: (payload.replicas as number) ?? 3, image: (payload.image as string) ?? 'postgres:16', cpuRequest: (payload.cpuRequest as number) ?? 500, memRequest: (payload.memRequest as number) ?? 512, crashRate: (payload.crashRate as number) ?? 0, storageGi: (payload.storageGi as number) ?? 1, envConfigMaps: [], envSecrets: [] }]
           logEvent(s, 'Normal', 'SuccessfulCreate', `StatefulSet ${name} created with ${payload.replicas ?? 3} replica(s)${(payload.storageGi as number) ?? 1 > 0 ? `, volumeClaimTemplate ${(payload.storageGi as number) ?? 1}Gi each` : ''}`, name)
           break
         case 'service': {
@@ -574,7 +582,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const dep = state.deployments.find((d) => d.id === id)
           if (!dep) return state
           const next = { ...dep, ...patch, labels: (patch.labels as Labels) ?? dep.labels, selector: (patch.selector as Labels) ?? dep.selector } as Deployment
-          const specChanged = next.image !== dep.image || next.cpuRequest !== dep.cpuRequest || next.memRequest !== dep.memRequest
+          const specChanged = next.image !== dep.image || next.cpuRequest !== dep.cpuRequest || next.memRequest !== dep.memRequest || JSON.stringify(next.envConfigMaps ?? []) !== JSON.stringify(dep.envConfigMaps ?? []) || JSON.stringify(next.envSecrets ?? []) !== JSON.stringify(dep.envSecrets ?? [])
           if (specChanged) next.revision = dep.revision + 1
           s.deployments = state.deployments.map((d) => (d.id === id ? next : d))
           logEvent(s, 'Normal', specChanged ? 'RolloutStarted' : 'ScalingReplicaSet', specChanged ? `Deployment ${next.name}: image → ${next.image}, rolling out revision ${next.revision}` : `Deployment ${next.name} scaled to ${next.replicas}`, next.name)
@@ -588,7 +596,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const ds = state.daemonSets.find((d) => d.id === id)
           if (!ds) return state
           const next = { ...ds, ...patch, labels: (patch.labels as Labels) ?? ds.labels } as DaemonSet
-          const specChanged = next.image !== ds.image
+          const specChanged = next.image !== ds.image || JSON.stringify(next.envConfigMaps ?? []) !== JSON.stringify(ds.envConfigMaps ?? []) || JSON.stringify(next.envSecrets ?? []) !== JSON.stringify(ds.envSecrets ?? [])
           s.daemonSets = state.daemonSets.map((d) => (d.id === id ? next : d))
           if (specChanged) {
             // recreate all pods
@@ -601,7 +609,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
           const sts = state.statefulSets.find((d) => d.id === id)
           if (!sts) return state
           const next = { ...sts, ...patch } as StatefulSet
-          const specChanged = next.image !== sts.image
+          const specChanged = next.image !== sts.image || JSON.stringify(next.envConfigMaps ?? []) !== JSON.stringify(sts.envConfigMaps ?? []) || JSON.stringify(next.envSecrets ?? []) !== JSON.stringify(sts.envSecrets ?? [])
           s.statefulSets = state.statefulSets.map((d) => (d.id === id ? next : d))
           if (specChanged) {
             s.pods = state.pods.filter((p) => p.ownerId !== id)

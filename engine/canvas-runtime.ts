@@ -20,7 +20,7 @@ export interface CanvasPod {
 }
 export interface CanvasDeployment {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
-  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; revision: number;
+  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; revision: number; envConfigMaps?: string[]; envSecrets?: string[];
 }
 export interface CanvasReplicaSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
@@ -29,11 +29,11 @@ export interface CanvasReplicaSet {
 }
 export interface CanvasDaemonSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
-  image: string; cpuRequest: number; memRequest: number; crashRate: number;
+  image: string; cpuRequest: number; memRequest: number; crashRate: number; envConfigMaps?: string[]; envSecrets?: string[];
 }
 export interface CanvasStatefulSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; serviceName: string;
-  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; storageGi: number; claimName?: string;
+  replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number; storageGi: number; claimName?: string; envConfigMaps?: string[]; envSecrets?: string[];
 }
 export interface CanvasCronJob {
   id: string; name: string; namespace: string; schedule: string; image: string;
@@ -134,6 +134,7 @@ function toPod(pod: CanvasPod, nodes: CanvasNode[], previous?: PodResource): Pod
         ...(pod.completionTicks !== null ? { runForTicks: pod.completionTicks, exitCode: 0 } : {}),
       }],
       restartPolicy: pod.completionTicks !== null ? "Never" : "Always",
+      ...((pod.envConfigMap || pod.envSecret) ? { envFrom: [...(pod.envConfigMap ? [{ configMapRef: { name: pod.envConfigMap } }] : []), ...(pod.envSecret ? [{ secretRef: { name: pod.envSecret } }] : [])] } : {}),
       ...(targetName ? { nodeName: targetName } : {}),
       ...(pod.nodeSelector ? { nodeSelector: { ...pod.nodeSelector } } : {}),
       ...(pod.mountedPvc ? { volumeClaimName: pod.mountedPvc } : {}),
@@ -166,7 +167,7 @@ function projectPod<T extends CanvasPod>(resource: PodResource, original: T | un
     ageTicks: Math.max(0, tick - resource.metadata.creationTimestamp), requiredNode: node?.id ?? null,
     completionTicks: container?.runForTicks ?? null, nodeId: node?.id ?? null, logs: [],
     ownerId: owner?.uid ?? null, ownerKind: kind,
-    envConfigMap: null, envSecret: null, ports: [], mountedPvc: resource.spec.volumeClaimName ?? null,
+    envConfigMap: resource.spec.envFrom?.find(item => item.configMapRef)?.configMapRef?.name ?? null, envSecret: resource.spec.envFrom?.find(item => item.secretRef)?.secretRef?.name ?? null, ports: [], mountedPvc: resource.spec.volumeClaimName ?? null,
   };
   return {
     ...base, id: resource.metadata.uid, name: resource.metadata.name,
@@ -175,6 +176,8 @@ function projectPod<T extends CanvasPod>(resource: PodResource, original: T | un
     cpuRequest: container?.resources.requests.cpuMilli ?? base.cpuRequest,
     memRequest: container?.resources.requests.memoryMi ?? base.memRequest,
     restarts, crashRate: container?.simulatedCrashRate ?? base.crashRate,
+    envConfigMap: resource.spec.envFrom?.find(item => item.configMapRef)?.configMapRef?.name ?? base.envConfigMap ?? null,
+    envSecret: resource.spec.envFrom?.find(item => item.secretRef)?.secretRef?.name ?? base.envSecret ?? null,
     ageTicks: original ? original.ageTicks + 1 : Math.max(0, tick - resource.metadata.creationTimestamp),
     phaseTicks: phase === base.phase ? base.phaseTicks + 1 : 0,
     requiredNode: kind === "daemonset" ? node?.id ?? base.requiredNode : base.requiredNode, nodeId: node?.id ?? base.nodeId,
@@ -193,7 +196,7 @@ function toDeployment(item: CanvasDeployment, previous?: DeploymentResource): De
   meta.generation = Math.max(1,item.revision);
   return {
     apiVersion:"apps/v1",kind:"Deployment",metadata:meta,
-    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}},strategy:{type:"RollingUpdate",maxSurge:1,maxUnavailable:0}},
+    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{...(item.envConfigMaps?.length || item.envSecrets?.length ? {envFrom:[...(item.envConfigMaps ?? []).map(name=>({configMapRef:{name}})),...(item.envSecrets ?? []).map(name=>({secretRef:{name}}))]} : {}),containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}},strategy:{type:"RollingUpdate",maxSurge:1,maxUnavailable:0}},
     status:previous?.status ?? {observedGeneration:0,replicas:0,updatedReplicas:0,readyReplicas:0,availableReplicas:0,conditions:[]},
   };
 }
@@ -208,10 +211,10 @@ function toReplicaSet(item: CanvasReplicaSet, previous?: ReplicaSetResource, par
   };
 }
 function toDaemonSet(item: CanvasDaemonSet, previous?: DaemonSetResource): DaemonSetResource {
-  return { apiVersion: "apps/v1", kind: "DaemonSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { selector: { matchLabels: { ...item.selector } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } } }, status: previous?.status ?? { desiredNumberScheduled: 0, currentNumberScheduled: 0, numberReady: 0, numberAvailable: 0, observedGeneration: 0 } };
+  return { apiVersion: "apps/v1", kind: "DaemonSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { selector: { matchLabels: { ...item.selector } }, template: { metadata: { labels: { ...item.labels } }, spec: { ...(item.envConfigMaps?.length || item.envSecrets?.length ? { envFrom: [...(item.envConfigMaps ?? []).map(name => ({ configMapRef: { name } })), ...(item.envSecrets ?? []).map(name => ({ secretRef: { name } }))] } : {}), containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } } }, status: previous?.status ?? { desiredNumberScheduled: 0, currentNumberScheduled: 0, numberReady: 0, numberAvailable: 0, observedGeneration: 0 } };
 }
 function toStatefulSet(item: CanvasStatefulSet, previous?: StatefulSetResource): StatefulSetResource {
-  return { apiVersion: "apps/v1", kind: "StatefulSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { replicas: item.replicas, serviceName: item.serviceName, selector: { matchLabels: { app: item.labels.app ?? item.name } }, template: { metadata: { labels: { ...item.labels } }, spec: { containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } }, ...(item.claimName || item.storageGi > 0 ? { volumeClaimTemplate: { storageGi: item.storageGi, storageClassName: "standard", ...(item.claimName ? { claimName: item.claimName } : {}) } } : {}) }, status: previous?.status ?? { replicas: 0, readyReplicas: 0, currentReplicas: 0, observedGeneration: 0 } };
+  return { apiVersion: "apps/v1", kind: "StatefulSet", metadata: makeMeta(previous,item.name,item.namespace,item.id,item.labels), spec: { replicas: item.replicas, serviceName: item.serviceName, selector: { matchLabels: { app: item.labels.app ?? item.name } }, template: { metadata: { labels: { ...item.labels } }, spec: { ...(item.envConfigMaps?.length || item.envSecrets?.length ? { envFrom: [...(item.envConfigMaps ?? []).map(name => ({ configMapRef: { name } })), ...(item.envSecrets ?? []).map(name => ({ secretRef: { name } }))] } : {}), containers: [{ name: "main", image: item.image, resources: { requests: { cpuMilli: item.cpuRequest, memoryMi: item.memRequest } }, simulatedCrashRate: item.crashRate }] } }, ...(item.claimName || item.storageGi > 0 ? { volumeClaimTemplate: { storageGi: item.storageGi, storageClassName: "standard", ...(item.claimName ? { claimName: item.claimName } : {}) } } : {}) }, status: previous?.status ?? { replicas: 0, readyReplicas: 0, currentReplicas: 0, observedGeneration: 0 } };
 }
 function toJob(item: CanvasJob, previous?: JobResource): JobResource {
   const cronOwner = item.cronjobOwner ? controllerOwner(item.cronjobOwner,"CronJob",item.cronjobOwner) : undefined;
@@ -279,7 +282,22 @@ function projectControllers(input: CanvasControllers, state: EngineState): Canva
     const elapsed = state.tick - resource.metadata.creationTimestamp;
     return { ...item, clusterIP: resource.status.clusterIP, nodePort: resource.status.nodePort ?? null, externalIP: resource.status.externalIP ?? null, lbTicks: Math.max(0, 5 - elapsed) };
   });
-  return { ...input, deployments: input.deployments ?? [], replicaSets, cronJobs, jobs, pvcs, services };
+  const deployments = (input.deployments ?? []).map(item => {
+    const resource = byUid<DeploymentResource>(item.id,"Deployment");
+    const envFrom = resource?.spec.template.spec.envFrom ?? [];
+    return { ...item, envConfigMaps: envFrom.flatMap(ref => ref.configMapRef ? [ref.configMapRef.name] : []), envSecrets: envFrom.flatMap(ref => ref.secretRef ? [ref.secretRef.name] : []) };
+  });
+  const daemonSets = input.daemonSets.map(item => {
+    const resource = byUid<DaemonSetResource>(item.id,"DaemonSet");
+    const envFrom = resource?.spec.template.spec.envFrom ?? [];
+    return { ...item, envConfigMaps: envFrom.flatMap(ref => ref.configMapRef ? [ref.configMapRef.name] : []), envSecrets: envFrom.flatMap(ref => ref.secretRef ? [ref.secretRef.name] : []) };
+  });
+  const statefulSets = input.statefulSets.map(item => {
+    const resource = byUid<StatefulSetResource>(item.id,"StatefulSet");
+    const envFrom = resource?.spec.template.spec.envFrom ?? [];
+    return { ...item, envConfigMaps: envFrom.flatMap(ref => ref.configMapRef ? [ref.configMapRef.name] : []), envSecrets: envFrom.flatMap(ref => ref.secretRef ? [ref.secretRef.name] : []) };
+  });
+  return { ...input, deployments, daemonSets, statefulSets, replicaSets, cronJobs, jobs, pvcs, services };
 }
 
 /** Synchronize the canvas projection into a retained EngineState, run one engine tick, and project resources back. */

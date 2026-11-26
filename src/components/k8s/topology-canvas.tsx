@@ -32,7 +32,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCluster } from '@/lib/cluster-store'
-import { engineStore } from '@/lib/engine-store'
+import { useConnections } from '@/hooks/use-connections'
+import { useTraffic } from '@/hooks/use-traffic'
 
 // ---------------------------------------------------------------- card sizes
 const NW = 190 // card width
@@ -129,98 +130,8 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
-  const [trafficRoute, setTrafficRoute] = useState<{ ingressId: string; serviceId: string; podId: string } | null>(null)
-  const [trafficMessage, setTrafficMessage] = useState('')
-
-  useEffect(() => {
-    if (!trafficRoute) return
-    const timer = window.setTimeout(() => setTrafficRoute(null), 2200)
-    return () => window.clearTimeout(timer)
-  }, [trafficRoute])
-
-  const [selectedIngressId, setSelectedIngressId] = useState('')
-  const sendRequest = useCallback(() => {
-    const state = useCluster.getState()
-    const ingress = state.ingresses.find((item) => item.id === selectedIngressId &&
-      (activeNamespace === 'all' || item.namespace === activeNamespace))
-    if (!ingress) {
-      setTrafficMessage('Select an Ingress rule in the current namespace')
-      return
-    }
-    const service = state.services.find((item) => item.namespace === ingress.namespace && item.name === ingress.serviceName)
-    if (!service) {
-      setTrafficMessage(`Ingress ${ingress.name} has no matching Service backend`)
-      return
-    }
-    const result = engineStore.simulateTraffic(ingress.namespace, service.name)
-    if (!result.ok) {
-      setTrafficMessage(`Request ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} · ${result.reason}`)
-      return
-    }
-    setTrafficMessage(` ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% error model`)
-    setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId: state.pods.find(p => p.name === result.podName && p.namespace === ingress.namespace)?.id ?? '' })
-  }, [activeNamespace, selectedIngressId])
-  
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return
-    const state = useCluster.getState()
-    const source = connection.source
-    const target = connection.target
-    const id = (nodeId: string, kind: string) => nodeId.startsWith(`t-${kind}-`) ? nodeId.slice(kind.length + 3) : null
-    const svcId = id(source, 'service')
-    const depId = id(target, 'deployment')
-    if (svcId && depId) {
-      const service = state.services.find((item) => item.id === svcId)
-      const deployment = state.deployments.find((item) => item.id === depId)
-      if (!service || !deployment || service.namespace !== deployment.namespace) return
-      state.updateResource('service', service.id, { selector: { ...deployment.selector } })
-      setTrafficMessage(`Service ${service.name} now selects Deployment ${deployment.name}`)
-      return
-    }
-    const ingressId = id(source, 'ingress')
-    const targetServiceId = id(target, 'service')
-    if (ingressId && targetServiceId) {
-      const ingress = state.ingresses.find((item) => item.id === ingressId)
-      const service = state.services.find((item) => item.id === targetServiceId)
-      if (!ingress || !service || ingress.namespace !== service.namespace) return
-      state.updateResource('ingress', ingress.id, { serviceName: service.name })
-      setTrafficMessage(`Ingress ${ingress.name} now routes to Service ${service.name}`)
-      return
-    }
-    const configMapId = id(source, 'configmap')
-    const secretId = id(source, 'secret')
-    const podId = id(target, 'pod')
-    if (podId && configMapId) {
-      const configMap = state.configMaps.find((item) => item.id === configMapId)
-      const pod = state.pods.find((item) => item.id === podId)
-      if (!configMap || !pod || configMap.namespace !== pod.namespace) return
-      state.updateResource('pod', pod.id, { envConfigMap: configMap.name })
-      setTrafficMessage(`Pod ${pod.name} now imports ConfigMap ${configMap.name}`)
-      return
-    }
-    if (podId && secretId) {
-      const secret = state.secrets.find((item) => item.id === secretId)
-      const pod = state.pods.find((item) => item.id === podId)
-      if (!secret || !pod || secret.namespace !== pod.namespace) return
-      state.updateResource('pod', pod.id, { envSecret: secret.name })
-      setTrafficMessage(`Pod ${pod.name} now imports Secret ${secret.name}`)
-      return
-    }
-    const pvcId = id(source, 'pvc')
-    const statefulSetId = id(target, 'statefulset')
-    if (pvcId && statefulSetId) {
-      const pvc = state.pvcs.find((item) => item.id === pvcId)
-      const statefulSet = state.statefulSets.find((item) => item.id === statefulSetId)
-      if (!pvc || !statefulSet || pvc.namespace !== statefulSet.namespace || statefulSet.replicas !== 1) {
-        setTrafficMessage('PVC → StatefulSet requires matching namespaces and exactly one replica (one existing claim cannot safely back multiple ordinals)')
-        return
-      }
-      state.updateResource('statefulset', statefulSet.id, { storageGi: pvc.sizeGi, claimName: pvc.name })
-      setTrafficMessage(`StatefulSet ${statefulSet.name} now waits for PVC ${pvc.name} to be Bound`)
-      return
-    }
-    setTrafficMessage('Unsupported connection. Use Service → Deployment, Ingress → Service, ConfigMap/Secret → Pod, or PVC → single-replica StatefulSet.')
-  }, [])
+  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest } = useTraffic(activeNamespace, ingresses)
+  const onConnect = useConnections(setTrafficMessage)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
     const visibleNs = namespaces.filter((n) => activeNamespace === 'all' || n.name === activeNamespace)
@@ -482,15 +393,21 @@ export function TopologyCanvas() {
           }
         }
       }
-      // configmap / secret → pod (env from)
+      // ConfigMap/Secret imports are Pod-template relationships on controllers.
       for (const c of nsCms) {
-        for (const p of nsPods.filter((p) => p.envConfigMap === c.name)) {
-          edges.push({ id: `e-cm-${c.id}-${p.id}`, source: nid('configmap', c.id), target: nid('pod', p.id), style: cmStyle })
+        for (const workload of [...nsDeps, ...nsDs, ...nsSts]) {
+          if (workload.namespace === c.namespace && workload.envConfigMaps?.includes(c.name)) {
+            const kind = 'replicas' in workload ? ('revision' in workload ? 'deployment' : 'statefulset') : 'daemonset';
+            edges.push({ id: `e-cm-${c.id}-${kind}-${workload.id}`, source: nid('configmap', c.id), target: nid(kind, workload.id), style: cmStyle });
+          }
         }
       }
       for (const c of nsSecs) {
-        for (const p of nsPods.filter((p) => p.envSecret === c.name)) {
-          edges.push({ id: `e-sec-${c.id}-${p.id}`, source: nid('secret', c.id), target: nid('pod', p.id), style: secStyle })
+        for (const workload of [...nsDeps, ...nsDs, ...nsSts]) {
+          if (workload.namespace === c.namespace && workload.envSecrets?.includes(c.name)) {
+            const kind = 'replicas' in workload ? ('revision' in workload ? 'deployment' : 'statefulset') : 'daemonset';
+            edges.push({ id: `e-sec-${c.id}-${kind}-${workload.id}`, source: nid('secret', c.id), target: nid(kind, workload.id), style: secStyle });
+          }
         }
       }
       // Explicit PVC → StatefulSet claim wiring.
