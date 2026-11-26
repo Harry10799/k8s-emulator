@@ -57,7 +57,7 @@ export function schedulePod(pod: PodResource, nodes: NodeResource[], boundPods: 
       continue;
     }
     const untolerated = (node.spec.taints ?? []).some(
-      (taint) => taint.effect === "NoSchedule" && !matchesTaint(taint, pod.spec.tolerations ?? []),
+      (taint) => (taint.effect === "NoSchedule" || taint.effect === "NoExecute") && !matchesTaint(taint, pod.spec.tolerations ?? []),
     );
     if (untolerated) {
       rejected += 1;

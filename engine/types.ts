@@ -118,7 +118,7 @@ export interface NodeResource {
   };
   status: {
     conditions: Array<{ type: "Ready" | "MemoryPressure"; status: boolean; reason?: string; message?: string }>;
-    resourceUsage?: { cpuMilli: number; memoryMi: number };
+    resourceUsage?: { cpuMilli: number; memoryMi: number };\n    lastHeartbeatTick?: number;\n    heartbeatEnabled?: boolean;\n    notReadySinceTick?: number;
   };
 }
 
@@ -232,7 +232,7 @@ export interface EngineState {
   /** Images cached per Node UID, independent from the global registry catalogue. */
   imageCache: Record<string, string[]>;
   /** Enables deterministic chaos failures for the optional failure-injection scenario. */
-  chaos?: boolean;
+  chaos?: boolean;\n  controlPlane?: { apiServerAvailable: boolean; schedulerAvailable: boolean; controllerManagerAvailable: boolean; etcdAvailable: boolean };\n  nodeController?: { heartbeatTimeoutTicks: number; podEvictionTimeoutTicks: number };
 }
 
 export interface RandomSource {
