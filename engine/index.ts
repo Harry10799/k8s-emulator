@@ -9,4 +9,4 @@ export * from "./kubelet";
 export * from "./image-registry";
 export * from "./canvas-runtime";
 export * from "./probes";
-export * from "./controllers";
+export * from "./controllers/index";

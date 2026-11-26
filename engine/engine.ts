@@ -1,11 +1,10 @@
 import type { EngineState, KubernetesResource, NodeResource, PodResource, RandomSource } from "./types";
 import { appendEvent, putResource, resourceKey } from "./resources";
-import { reconcileDeployments, reconcileReplicaSets, syncDeploymentStatuses } from "./reconcile";
 import { schedulePod } from "./scheduler";
 import { reconcileNodeResources } from "./resource-management";
 import { advancePodLifecycle } from "./kubelet";
 import { createInitialImageCache } from "./image-registry";
-import { reconcileDaemonSets, reconcileStatefulSets, reconcileJobs, reconcileCronJobs, reconcilePersistentVolumeClaims, reconcileServices } from "./controllers";
+import { reconcileControllers, reconcilePostKubeletControllers } from "./controllers/registry";
 
 export function createInitialState(resources: KubernetesResource[] = []): EngineState {
   const state: EngineState = { tick: 0, nextId: 1, nextResourceVersion: 1, resources: {}, events: [], imageCache: {} };
@@ -65,26 +64,16 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   const next: EngineState = structuredClone(state);
   next.tick += 1;
 
-  // Control-plane order: Deployment -> ReplicaSet -> scheduler/kubelet.
-  reconcileDeployments(next);
-  reconcileReplicaSets(next);
-  reconcileDaemonSets(next);
-  reconcileStatefulSets(next);
-  reconcileCronJobs(next);
-  reconcileJobs(next);
-  reconcilePersistentVolumeClaims(next);
-  reconcileServices(next);
+  // Ordered controller registry reconciles desired state before scheduling.
+  reconcileControllers(next);
 
   schedulePendingPodsInPlace(next);
 
   for (const pod of getPods(next)) advancePodLifecycle(next, pod, rng);
   reconcileNodeResources(next);
-  reconcileJobs(next);
-  reconcileDaemonSets(next);
-  reconcileStatefulSets(next);
-  reconcileServices(next);
-  reconcileReplicaSets(next);
-  syncDeploymentStatuses(next);
+  // Reconcile status-dependent controllers after kubelet updates, without
+  // advancing Deployment rollout decisions twice in one simulation tick.
+  reconcilePostKubeletControllers(next);
 
   return next;
 }
