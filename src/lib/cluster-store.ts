@@ -190,6 +190,8 @@ export interface Job {
   status: 'Active' | 'Complete'
   cronjobOwner: string | null
   createdTick: number
+  cpuRequest?: number
+  memRequest?: number
 }
 
 export interface K8sEvent {
