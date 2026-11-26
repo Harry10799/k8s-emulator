@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { advanceCanvasRuntime, resetCanvasRuntime, type CanvasControllers } from "../engine/canvas-runtime";
+import { advanceCanvasRuntime, getCanvasRuntimeState, resetCanvasRuntime, setCanvasRuntimeState, subscribeCanvasRuntime, type CanvasControllers } from "../engine/canvas-runtime";
 import { createInitialState, createSeededRng, injectChaosFailure, type NodeResource, type PodResource } from "../engine";
 
 const nodes = [{ id: "worker-1", name: "worker-1", role: "worker" as const, cpuCapacity: 2000, memCapacity: 2048 }];
@@ -80,4 +80,36 @@ describe("persistent canvas runtime", () => {
     expect(afterCanvasGc.controllers?.jobs[0].status).toBe("Complete");
     resetCanvasRuntime();
   });
+  it("publishes the same retained EngineState to external-store subscribers", () => {
+    resetCanvasRuntime();
+    const initial = getCanvasRuntimeState();
+    let notifications = 0;
+    const unsubscribe = subscribeCanvasRuntime(() => { notifications += 1; });
+    const next = createInitialState();
+    next.tick = 42;
+    setCanvasRuntimeState(next);
+    expect(getCanvasRuntimeState()).toBe(next);
+    expect(notifications).toBe(1);
+    unsubscribe();
+    resetCanvasRuntime();
+    expect(notifications).toBe(1);
+    expect(initial).not.toBe(next);
+  });
+
+  it("preserves node heartbeat and cordon state across canvas projection ticks", () => {
+    resetCanvasRuntime();
+    const first = advanceCanvasRuntime(nodes, [], 1, createSeededRng(41));
+    const current = getCanvasRuntimeState();
+    const node = Object.values(current.resources).find((resource): resource is NodeResource => resource.kind === "Node");
+    expect(node).toBeDefined();
+    node!.spec.unschedulable = true;
+    node!.status.heartbeatEnabled = false;
+    setCanvasRuntimeState(current);
+    advanceCanvasRuntime(nodes, first.pods, 2, createSeededRng(42));
+    const projected = Object.values(getCanvasRuntimeState().resources).find((resource): resource is NodeResource => resource.kind === "Node");
+    expect(projected?.spec.unschedulable).toBe(true);
+    expect(projected?.status.heartbeatEnabled).toBe(false);
+    resetCanvasRuntime();
+  });
+
 });

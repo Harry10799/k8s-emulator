@@ -41,7 +41,7 @@ Scheduler and controller-manager availability are independent. With scheduler do
 
 ## YAML and kubectl
 
-`engine/manifest.ts` supports a constrained safe YAML subset (maps, sequences, scalars and inline JSON), multi-document manifests and apply. The console supports get, describe, logs, delete, scale and events commands. This is intentionally not a full YAML 1.2 parser. The Engine Console uses a dedicated EngineState store seeded from canvas infrastructure; legacy canvas CRUD forms remain a compatibility projection until their final migration.
+`engine/manifest.ts` supports a constrained safe YAML subset (maps, sequences, scalars and inline JSON), multi-document manifests and apply. The parser supports maps, sequences, scalars and inline JSON, with multi-document apply. It is intentionally not a full YAML 1.2 parser. Manifest and kubectl helpers remain engine modules; the floating Engine Console UI has been removed in favor of the integrated Cluster health panel.
 
 
 ## Container lifecycle simulation
