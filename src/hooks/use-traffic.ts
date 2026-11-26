@@ -10,6 +10,8 @@ export function useTraffic(activeNamespace: string) {
   const [selectedIngressId, setSelectedIngressId] = useState('')
   const [trafficRoute, setTrafficRoute] = useState<TrafficRoute | null>(null)
   const [trafficMessage, setTrafficMessage] = useState('')
+  const [trafficRps, setTrafficRpsState] = useState(0)
+  const setTrafficRps = useCallback((value: number) => { const next = Math.max(0, Math.min(100, Math.round(value))); setTrafficRpsState(next); engineStore.setTrafficRps(next) }, [])
   useEffect(() => {
     if (!trafficRoute) return
     const timer = window.setTimeout(() => setTrafficRoute(null), 2200)
@@ -27,5 +29,5 @@ export function useTraffic(activeNamespace: string) {
     setTrafficMessage(`${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% modeled error rate`)
     setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId })
   }, [activeNamespace, selectedIngressId])
-  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest }
+  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest, trafficRps, setTrafficRps }
 }

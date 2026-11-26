@@ -41,6 +41,7 @@ export const engineStore = {
     publish(routed.state)
     return routed.result
   },
+  setTrafficRps: (rps: number) => { const next = structuredClone(getCanvasRuntimeState()); next.simulatedRequestsPerSecond = Math.max(0, Math.min(100, Math.round(rps))); publish(next) },
   setLoadPercent: (percent: number) => { const next = structuredClone(getCanvasRuntimeState()); next.simulatedLoadPercent = Math.max(0, Math.min(300, Math.round(percent))); publish(next) },
   setControlPlane: (key: 'apiServerAvailable' | 'schedulerAvailable' | 'controllerManagerAvailable' | 'etcdAvailable', available: boolean) => {
     const next = structuredClone(getCanvasRuntimeState())

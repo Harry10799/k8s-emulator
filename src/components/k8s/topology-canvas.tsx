@@ -130,7 +130,7 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const setEditing = useCluster((s) => s.setEditing)
-  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest } = useTraffic(activeNamespace)
+  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
@@ -514,6 +514,10 @@ export function TopologyCanvas() {
           <option value="">Select Ingress host/path…</option>
           {ingresses.filter(item => activeNamespace === 'all' || item.namespace === activeNamespace).map(item => <option key={item.id} value={item.id}>{item.host}{item.path} → {item.serviceName}</option>)}
         </select>
+        <label className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/95 px-2 py-2 text-[10px] text-zinc-300">
+          <span>Load {trafficRps} RPS</span>
+          <input aria-label="Simulated requests per second" type="range" min="0" max="100" step="5" value={trafficRps} onChange={(event) => setTrafficRps(Number(event.target.value))} className="w-24 accent-cyan-400" />
+        </label>
         <button onClick={sendRequest} className="rounded-lg border border-cyan-500/40 bg-cyan-950/90 px-3 py-2 text-[11px] font-semibold text-cyan-200 shadow-lg hover:bg-cyan-900">
           <span className="mr-1.5">↗</span> Send test request
         </button>

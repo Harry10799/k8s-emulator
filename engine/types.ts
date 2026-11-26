@@ -250,6 +250,8 @@ export interface EngineState {
   simulatedLoadPercent?: number;
   /** Monotonic deterministic request sequence for replayable traffic simulation. */
   trafficRequestCount?: number;
+  /** Configured request rate used as an additional deterministic workload load source. */
+  simulatedRequestsPerSecond?: number;
 }
 
 export interface RandomSource {

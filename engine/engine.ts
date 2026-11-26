@@ -67,7 +67,7 @@ export function step(state: EngineState, rng: RandomSource): EngineState {
   const next: EngineState = structuredClone(state);
   next.tick += 1;
 
-  const loadPercent = Math.max(0, Math.min(300, next.simulatedLoadPercent ?? 100));
+  const loadPercent = Math.max(0, Math.min(300, (next.simulatedLoadPercent ?? 100) + (next.simulatedRequestsPerSecond ?? 0) * 2));
   for (const pod of getPods(next)) for (const container of pod.spec.containers) container.simulatedCpuUsageMilli = Math.round(container.resources.requests.cpuMilli * loadPercent / 100);
 
   const apiAvailable = next.controlPlane?.apiServerAvailable !== false && next.controlPlane?.etcdAvailable !== false;

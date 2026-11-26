@@ -25,7 +25,7 @@ export interface CanvasDeployment {
 export interface CanvasReplicaSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
   replicas: number; image: string; cpuRequest: number; memRequest: number; crashRate: number;
-  revision: number; parentDeployment: string | null; superseded: boolean;
+  revision: number; parentDeployment: string | null; superseded: boolean; envConfigMaps?: string[]; envSecrets?: string[];
 }
 export interface CanvasDaemonSet {
   id: string; name: string; namespace: string; labels: Record<string,string>; selector: Record<string,string>;
@@ -205,7 +205,7 @@ function toReplicaSet(item: CanvasReplicaSet, previous?: ReplicaSetResource, par
   meta.annotations["deployment.kubernetes.io/revision"] = String(item.revision);
   return {
     apiVersion:"apps/v1",kind:"ReplicaSet",metadata:meta,
-    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}}},
+    spec:{replicas:item.replicas,selector:{matchLabels:{...item.selector}},template:{metadata:{labels:{...item.labels}},spec:{...(item.envConfigMaps?.length || item.envSecrets?.length ? {envFrom:[...(item.envConfigMaps ?? []).map(name=>({configMapRef:{name}})),...(item.envSecrets ?? []).map(name=>({secretRef:{name}}))]} : {}),containers:[{name:"main",image:item.image,resources:{requests:{cpuMilli:item.cpuRequest,memoryMi:item.memRequest}},simulatedCrashRate:item.crashRate}]}}},
     status:previous?.status ?? {observedGeneration:1,replicas:0,readyReplicas:0,availableReplicas:0},
     ownerReferences:item.parentDeployment ? controllerOwner(item.parentDeployment,"Deployment",parentName ?? item.parentDeployment) : undefined,
   };
@@ -254,6 +254,8 @@ function projectControllers(input: CanvasControllers, state: EngineState): Canva
       image:container?.image ?? "nginx:latest",cpuRequest:container?.resources.requests.cpuMilli ?? 500,
       memRequest:container?.resources.requests.memoryMi ?? 512,crashRate:container?.simulatedCrashRate ?? 0,
       revision,parentDeployment:parent,superseded:Boolean(deployment && (container?.image !== deployment.image || revision < deployment.revision)),
+      envConfigMaps: resource.spec.template.spec.envFrom?.flatMap(ref => ref.configMapRef ? [ref.configMapRef.name] : []) ?? [],
+      envSecrets: resource.spec.template.spec.envFrom?.flatMap(ref => ref.secretRef ? [ref.secretRef.name] : []) ?? [],
     };
   });
   const jobs: CanvasJob[] = resources.filter((r): r is JobResource => r.kind === "Job").map(resource => ({
