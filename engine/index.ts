@@ -7,3 +7,4 @@ export * from "./scheduler";
 export * from "./types";
 export * from "./kubelet";
 export * from "./image-registry";
+export * from "./canvas-runtime";

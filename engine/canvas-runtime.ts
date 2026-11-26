@@ -27,8 +27,8 @@ export interface CanvasPod {
   nodeId: string | null;
   logs: string[];
 }
-export interface CanvasRuntimeResult {
-  pods: CanvasPod[];
+export interface CanvasRuntimeResult<T extends CanvasPod = CanvasPod> {
+  pods: T[];
   events: EngineEvent[];
 }
 
@@ -92,12 +92,12 @@ function toPod(pod: CanvasPod, nodes: CanvasNode[], previous?: PodResource): Pod
   };
 }
 
-function projectPod(resource: PodResource, original: CanvasPod, nodes: CanvasNode[], tick: number): CanvasPod {
+function projectPod<T extends CanvasPod>(resource: PodResource, original: T, nodes: CanvasNode[]): T {
   const container = resource.status.containerStatuses[0];
   const waiting = container?.waitingReason;
   let phase: CanvasPod["phase"];
   if (resource.status.phase === "Succeeded") phase = "Succeeded";
-  else if (waiting === "CrashLoopBackOff" || waiting === "ImagePullBackOff" || waiting === "ErrImagePull") phase = "CrashLoopBackOff";
+  else if (waiting === "CrashLoopBackOff") phase = "CrashLoopBackOff";
   else if (resource.status.phase === "Running") phase = "Running";
   else if (resource.spec.nodeName) phase = "ContainerCreating";
   else phase = "Pending";
@@ -110,11 +110,11 @@ function projectPod(resource: PodResource, original: CanvasPod, nodes: CanvasNod
     restarts,
     ageTicks: original.ageTicks + 1,
     phaseTicks: phase === original.phase ? original.phaseTicks + 1 : 0,
-  };
+  } as T;
 }
 
 /** Synchronize canvas objects into a retained EngineState, run one pure engine tick, then project Pod status. */
-export function advanceCanvasRuntime(nodes: CanvasNode[], pods: CanvasPod[], tick: number, rng: RandomSource): CanvasRuntimeResult {
+export function advanceCanvasRuntime<T extends CanvasPod>(nodes: CanvasNode[], pods: T[], tick: number, rng: RandomSource): CanvasRuntimeResult<T> {
   const workerNodes = nodes.filter(node => node.role === "worker");
   if (!engineState) engineState = createInitialState(workerNodes.map(toNode));
   const previousEvents = new Set(engineState.events.map(event => event.id));
@@ -128,16 +128,18 @@ export function advanceCanvasRuntime(nodes: CanvasNode[], pods: CanvasPod[], tic
     engineState.imageCache[node.id] ??= ["nginx:1.27", "nginx:1.28", "busybox", "busybox:1.36"];
   }
   const activePods = pods.filter(pod => pod.phase !== "Terminating" && pod.phase !== "Succeeded");
-  const previousPods = new Map(Object.values(engineState.resources).filter((resource): resource is PodResource => resource.kind === "Pod").map(pod => [pod.metadata.uid, pod]));
+  const previousPods = new Map<string, PodResource>(Object.values(engineState.resources).filter((resource): resource is PodResource => resource.kind === "Pod").map(pod => [pod.metadata.uid, pod] as const));
   for (const pod of activePods) {
     const resource = toPod(pod, workerNodes, previousPods.get(pod.id));
     resources[resourceKey(resource)] = resource;
   }
   engineState = { ...engineState, tick: Math.max(0, tick - 1), resources, imageCache: Object.fromEntries(workerNodes.map(node => [node.id, engineState?.imageCache[node.id] ?? []])) };
   engineState = step(engineState, rng);
+  const currentState = engineState;
+  if (!currentState) throw new Error("Canvas runtime failed to initialize");
   const projected = activePods.map(pod => {
-    const resource = Object.values(engineState!.resources).find((item): item is PodResource => item.kind === "Pod" && item.metadata.uid === pod.id);
-    return resource ? projectPod(resource, pod, workerNodes, tick) : pod;
+    const resource = Object.values(currentState.resources).find((item): item is PodResource => item.kind === "Pod" && item.metadata.uid === pod.id);
+    return resource ? projectPod(resource, pod, workerNodes) : pod;
   });
   const byId = new Map(projected.map(pod => [pod.id, pod]));
   const nextPods = pods.map(pod => byId.get(pod.id) ?? pod);

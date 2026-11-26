@@ -204,7 +204,12 @@ export interface K8sEvent {
 
 export type SelectionId = string | null // 'kind:id'
 
-const rand = (n: number) => Math.random().toString(36).slice(2, 2 + n)
+let idRng = createSeededRng(0x5eed1234)
+const rand = (n: number) => {
+  let token = ''
+  while (token.length < n) token += Math.floor(idRng.next() * 36).toString(36)
+  return token.slice(0, n)
+}
 const simTime = (t: number) => `00:${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 
 let nextId = 1
@@ -1066,6 +1071,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
 
   reset: () => {
     resetCanvasRuntime()
+    idRng = createSeededRng(0x5eed1234)
     set({
       nodes: [
         { id: 'cp1', name: 'control-plane-1', role: 'control-plane', cpuCapacity: 4000, memCapacity: 8192, position: { x: 300, y: 0 } },
@@ -1096,7 +1102,7 @@ export const useCluster = create<ClusterState>((set, get) => ({
 }))
 
 function rand2(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min
+  return Math.floor(idRng.next() * (max - min + 1)) + min
 }
 
 // endpoints helper for services (used by UI)
