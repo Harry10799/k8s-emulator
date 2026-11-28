@@ -272,3 +272,75 @@ html[data-theme="blueprint"] .namespace-blueprint-frame{background:rgba(157,126,
 .explorer-pane .group>div{min-width:0}
 @media(max-width:1023px) and (min-width:768px){.pane-open.explorer-pane{width:224px;min-width:224px}.pane-open.inspector-pane{width:248px;min-width:248px}}
 @media(max-width:767px){.explorer-pane,.inspector-pane{display:none}.explorer-mobile-trigger{display:flex}}
+
+
+/* Theme-aware portal surfaces: Radix popups render under body, outside the workbench shell. */
+html[data-theme="night"] [data-slot="dialog-content"],
+html[data-theme="night"] [data-slot="alert-dialog-content"],
+html[data-theme="night"] [data-slot="popover-content"],
+html[data-theme="night"] [data-slot="select-content"],
+html[data-theme="night"] [data-slot="dropdown-menu-content"],
+html[data-theme="night"] [data-slot="dropdown-menu-sub-content"],
+html[data-theme="night"] [data-slot="context-menu-content"],
+html[data-theme="night"] [data-slot="command-dialog"],
+html[data-theme="night"] [role="dialog"]:not([data-radix-popper-content-wrapper] *) {
+  background-color:var(--panel-raised)!important;
+  color:var(--paper)!important;
+  border-color:var(--line)!important;
+}
+html[data-theme="blueprint"] [data-slot="dialog-content"],
+html[data-theme="blueprint"] [data-slot="alert-dialog-content"],
+html[data-theme="blueprint"] [data-slot="popover-content"],
+html[data-theme="blueprint"] [data-slot="select-content"],
+html[data-theme="blueprint"] [data-slot="dropdown-menu-content"],
+html[data-theme="blueprint"] [data-slot="dropdown-menu-sub-content"],
+html[data-theme="blueprint"] [data-slot="context-menu-content"] {
+  background-color:var(--panel)!important;
+  color:var(--ink)!important;
+  border-color:var(--line)!important;
+}
+html[data-theme="night"] [data-slot="dialog-content"] input,
+html[data-theme="night"] [data-slot="dialog-content"] textarea,
+html[data-theme="night"] [data-slot="dialog-content"] [data-slot="select-trigger"],
+html[data-theme="night"] [data-slot="dialog-content"] button[data-slot="select-trigger"] {
+  background-color:var(--panel)!important;
+  color:var(--paper)!important;
+  border-color:var(--line)!important;
+}
+html[data-theme="blueprint"] [data-slot="dialog-content"] input,
+html[data-theme="blueprint"] [data-slot="dialog-content"] textarea,
+html[data-theme="blueprint"] [data-slot="dialog-content"] [data-slot="select-trigger"] {
+  background-color:var(--canvas)!important;
+  color:var(--ink)!important;
+  border-color:var(--line)!important;
+}
+html[data-theme="night"] [data-slot="dialog-content"] label,
+html[data-theme="night"] [data-slot="dialog-content"] [data-slot="dialog-title"],
+html[data-theme="night"] [data-slot="alert-dialog-content"] *,
+html[data-theme="night"] [data-slot="popover-content"] *,
+html[data-theme="night"] [data-slot="select-content"] *,
+html[data-theme="night"] [data-slot="dropdown-menu-content"] * {
+  color:inherit;
+}
+html[data-theme="blueprint"] [data-slot="dialog-content"] label,
+html[data-theme="blueprint"] [data-slot="dialog-content"] [data-slot="dialog-title"],
+html[data-theme="blueprint"] [data-slot="alert-dialog-content"] *,
+html[data-theme="blueprint"] [data-slot="popover-content"] *,
+html[data-theme="blueprint"] [data-slot="select-content"] *,
+html[data-theme="blueprint"] [data-slot="dropdown-menu-content"] * {
+  color:inherit;
+}
+html[data-theme="night"] [data-slot="select-item"]:focus,
+html[data-theme="night"] [data-slot="dropdown-menu-item"]:focus,
+html[data-theme="night"] [data-slot="select-item"][data-highlighted],
+html[data-theme="night"] [data-slot="dropdown-menu-item"][data-highlighted] {
+  background-color:color-mix(in srgb,var(--brass) 20%,var(--panel))!important;
+  color:var(--paper)!important;
+}
+html[data-theme="blueprint"] [data-slot="select-item"]:focus,
+html[data-theme="blueprint"] [data-slot="dropdown-menu-item"]:focus,
+html[data-theme="blueprint"] [data-slot="select-item"][data-highlighted],
+html[data-theme="blueprint"] [data-slot="dropdown-menu-item"][data-highlighted] {
+  background-color:color-mix(in srgb,var(--brass) 18%,var(--panel))!important;
+  color:var(--ink)!important;
+}
