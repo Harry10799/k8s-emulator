@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -118,6 +118,8 @@ export function TopologyCanvas() {
   const activeNamespace = useCluster((s) => s.activeNamespace)
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
+  const selectedResource = useCluster((s) => s.selected)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const setEditing = useCluster((s) => s.setEditing)
   const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
@@ -443,19 +445,52 @@ export function TopologyCanvas() {
       `e-ing-${trafficRoute.ingressId}-${trafficRoute.serviceId}`,
       `e-svc-${trafficRoute.serviceId}-${trafficRoute.podId}`,
     ]) : null
+    const selectedNodeId = selectedResource ? 't-' + selectedResource.replace(':', '-') : null
+    const connectedNodeIds = new Set<string>()
+    const connectedEdgeIds = new Set<string>()
+    if (selectedNodeId && cards.some((node) => node.id === selectedNodeId)) {
+      connectedNodeIds.add(selectedNodeId)
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const edge of edges) {
+          if (connectedNodeIds.has(edge.source) || connectedNodeIds.has(edge.target)) {
+            connectedEdgeIds.add(edge.id)
+            if (!connectedNodeIds.has(edge.source)) { connectedNodeIds.add(edge.source); changed = true }
+            if (!connectedNodeIds.has(edge.target)) { connectedNodeIds.add(edge.target); changed = true }
+          }
+        }
+      }
+    }
     const flowEdges: Edge[] = edges.map((edge) => {
-      const stroke = activeTrafficEdges?.has(edge.id) ? '#e0b45f' : (edge.style?.stroke as string | undefined) ?? '#71717a'
+      const isTraffic = activeTrafficEdges?.has(edge.id) ?? false
+      const isPath = connectedEdgeIds.has(edge.id)
+      const isChosen = selectedEdgeId === edge.id
+      const baseStroke = (edge.style?.stroke as string | undefined) ?? '#71717a'
+      const stroke = isTraffic || isChosen ? '#e0b45f' : isPath ? '#c69b4d' : baseStroke
+      const hasSelection = Boolean(selectedNodeId && connectedNodeIds.size)
       return {
         ...edge,
         type: 'smoothstep',
-        animated: activeTrafficEdges ? activeTrafficEdges.has(edge.id) : running,
+        animated: isTraffic || (hasSelection && isPath) || (running && !hasSelection),
+        interactionWidth: 22,
+        style: {
+          ...edge.style,
+          stroke,
+          strokeWidth: isTraffic || isChosen ? 3.5 : isPath ? 3 : Math.max(1.5, Number(edge.style?.strokeWidth ?? 1.5)),
+          opacity: hasSelection && !isPath ? 0.16 : 1,
+        },
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
-        style: { ...edge.style, stroke, strokeWidth: activeTrafficEdges?.has(edge.id) ? 3 : Math.max(2, Number(edge.style?.strokeWidth ?? 1.5)) },
       }
     })
+    const flowNodes = [...frames, ...cards].map((node) => {
+      if (node.type !== 'topoCard' || !selectedNodeId || !connectedNodeIds.size) return node
+      const active = connectedNodeIds.has(node.id)
+      return { ...node, style: { ...node.style, opacity: active ? 1 : 0.28 } }
+    })
 
-    return { flowNodes: [...frames, ...cards], flowEdges, total: totalRes }
-  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running, trafficRoute])
+    return { flowNodes, flowEdges, total: totalRes }
+  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running, trafficRoute, selectedResource, selectedEdgeId])
 
   return (
     <div className="relative h-full w-full bg-zinc-950">
@@ -469,7 +504,8 @@ export function TopologyCanvas() {
         onNodeDoubleClick={(_, node) => {
           if (node.type === 'topoCard') setEditing((node.data as TopoCardData).selectionId)
         }}
-        onPaneClick={() => select(null)}
+        onPaneClick={() => { select(null); setSelectedEdgeId(null) }}
+        onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
         zoomOnDoubleClick={false}
         fitView
         fitViewOptions={{ padding: 0.15 }}
@@ -485,6 +521,37 @@ export function TopologyCanvas() {
           showInteractive={false}
         />
       </ReactFlow>
+
+      {selectedEdgeId && (() => {
+        const edge = flowEdges.find((item) => item.id === selectedEdgeId)
+        const source = flowNodes.find((node) => node.id === edge?.source)
+        const target = flowNodes.find((node) => node.id === edge?.target)
+        const sourceData = source?.type === 'topoCard' ? source.data as TopoCardData : null
+        const targetData = target?.type === 'topoCard' ? target.data as TopoCardData : null
+        if (!edge || !sourceData || !targetData) return null
+        const relation = edge.id.startsWith('e-ing-') ? 'Ingress routes to Service'
+          : edge.id.startsWith('e-svc-') ? 'Service selects Ready Pod'
+          : edge.id.startsWith('e-dep-') ? 'Deployment owns ReplicaSet'
+          : edge.id.startsWith('e-cj-') ? 'CronJob creates Job'
+          : edge.id.startsWith('e-cm-') ? 'Workload imports ConfigMap'
+          : edge.id.startsWith('e-sec-') ? 'Workload imports Secret'
+          : edge.id.startsWith('e-pvc-') ? 'Persistent volume is mounted / claimed'
+          : 'Controller ownership relationship'
+        const health = (data: TopoCardData) => data.kind !== 'pod' ? 'n/a' : data.sub.split(' · ')[0]
+        return <div className="absolute left-1/2 top-3 z-30 w-[min(390px,calc(100%-24px))] -translate-x-1/2 rounded-xl border border-amber-600/40 bg-[var(--panel)] p-3 shadow-2xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-500">Relationship inspector</div>
+            <button onClick={() => setSelectedEdgeId(null)} className="rounded border border-[var(--border)] px-2 py-1 text-[10px]">Close</button>
+          </div>
+          <div className="mt-2 text-xs font-semibold text-[var(--foreground)]">{relation}</div>
+          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
+            <div className="min-w-0"><div className="truncate font-mono">{sourceData.name}</div><div className="mt-1 text-[10px] uppercase text-[var(--muted-foreground)]">{sourceData.kind}</div><div className="mt-1 text-[10px] text-[var(--muted-foreground)]">Endpoint: {health(sourceData)}</div></div>
+            <span className="text-amber-500">→</span>
+            <div className="min-w-0 text-right"><div className="truncate font-mono">{targetData.name}</div><div className="mt-1 text-[10px] uppercase text-[var(--muted-foreground)]">{targetData.kind}</div><div className="mt-1 text-[10px] text-[var(--muted-foreground)]">Endpoint: {health(targetData)}</div></div>
+          </div>
+          <div className="mt-2 border-t border-[var(--border)] pt-2 text-[10px] text-[var(--muted-foreground)]">Traffic: {edge.id.startsWith('e-svc-') ? 'Ready endpoint membership; request volume is modeled by the traffic simulator.' : edge.id.startsWith('e-ing-') ? 'Routing rule relationship; use Send test request to simulate a request.' : 'Control-plane relationship; no per-edge traffic metric is modeled.'}</div>
+        </div>
+      })()}
 
       {total === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
