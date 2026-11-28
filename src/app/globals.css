@@ -226,3 +226,32 @@ html[data-theme="blueprint"] .command-dialog{color:var(--ink)}
 .control-room-shell [class*="text-emerald-"],.control-room-shell [class*="text-cyan-"],.control-room-shell [class*="text-sky-"]{color:var(--brass-soft)!important}
 .control-room-shell [class*="border-emerald-"],.control-room-shell [class*="border-cyan-"],.control-room-shell [class*="border-sky-"]{border-color:color-mix(in srgb,var(--brass) 55%,var(--line))!important}
 .control-room-shell [class*="bg-emerald-950"],.control-room-shell [class*="bg-cyan-950"],.control-room-shell [class*="bg-sky-950"]{background-color:color-mix(in srgb,var(--brass) 13%,var(--panel))!important}
+
+/* Resource topology: compact instrument/rack cards with brass hardware language. */
+.topology-rack-card{position:relative;overflow:visible;border:1px solid var(--line);border-radius:4px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel-raised) 80%,var(--panel)),var(--panel));color:var(--ink);box-shadow:0 7px 18px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.055);transition:border-color .16s ease,box-shadow .16s ease}
+.topology-rack-card:hover{border-color:color-mix(in srgb,var(--brass) 62%,var(--line));box-shadow:0 8px 22px rgba(0,0,0,.24),0 0 0 1px color-mix(in srgb,var(--brass) 15%,transparent)}
+.topology-rack-card.is-selected{border-color:var(--brass);box-shadow:0 0 0 1px color-mix(in srgb,var(--brass) 55%,transparent),0 8px 24px rgba(0,0,0,.24)}
+.topology-rack-card.is-dim{opacity:.42;filter:saturate(.45)}
+.topology-rack-topline{height:14px;display:flex;align-items:center;gap:5px;padding:0 7px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--canvas) 55%,var(--panel))}
+.rack-screw{width:4px;height:4px;border-radius:50%;background:color-mix(in srgb,var(--muted-ink) 75%,transparent);box-shadow:inset 0 1px rgba(0,0,0,.4)}
+.rack-unit-label{margin-left:auto;font:11px var(--font-geist-mono),monospace;letter-spacing:.1em;color:var(--muted-ink)}
+.topology-rack-body{min-height:43px;display:flex;align-items:center;gap:8px;padding:6px 8px;position:relative}
+.topology-icon-bay{width:27px;height:27px;flex-shrink:0;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--brass) 42%,var(--line));background:color-mix(in srgb,var(--brass) 9%,var(--panel))}
+.topology-resource-name{color:var(--paper)}
+html[data-theme="blueprint"] .topology-resource-name{color:var(--ink)}
+.topology-resource-kind{color:var(--brass-soft);font:11px var(--font-geist-mono),monospace}
+html[data-theme="blueprint"] .topology-resource-kind{color:var(--brass)}
+.topology-resource-sub{color:var(--muted-ink);font:11px var(--font-geist-mono),monospace}
+.topology-status-led{width:6px;height:6px;flex-shrink:0;border-radius:50%;box-shadow:0 0 7px currentColor}
+.topology-rack-footer{height:15px;display:flex;justify-content:space-between;align-items:center;padding:0 8px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--canvas) 42%,var(--panel));font:11px var(--font-geist-mono),monospace;letter-spacing:.06em;color:var(--muted-ink)}
+.topology-rack-card.is-selected .topology-rack-footer{color:var(--brass-soft)}
+.topology-rack-card .react-flow__handle{z-index:3}
+.react-flow__edge-path{stroke-linecap:round}
+.react-flow__edge.animated .react-flow__edge-path{stroke-dasharray:2 9;stroke-width:2.8;animation:topology-traffic-particles .72s linear infinite;filter:drop-shadow(0 0 2px color-mix(in srgb,var(--brass) 65%,transparent))}
+@keyframes topology-traffic-particles{to{stroke-dashoffset:-22}}
+.react-flow__edge.selected .react-flow__edge-path{stroke:var(--brass)!important}
+html[data-theme="blueprint"] .topology-rack-card{box-shadow:0 5px 14px rgba(60,48,27,.09),inset 0 1px #fff9}
+html[data-theme="blueprint"] .topology-rack-topline,html[data-theme="blueprint"] .topology-rack-footer{background:#e7decb}
+html[data-theme="blueprint"] .topology-icon-bay{background:#e9dfca}
+html[data-theme="blueprint"] .topology-rack-card .topology-resource-name{color:#29271f}
+html[data-theme="blueprint"] .react-flow__edge-path{stroke:#94713b}

@@ -57,12 +57,12 @@ type NsFrameData = { ns: string; count: number; width: number; height: number }
 type NsFrameNode = Node<NsFrameData, 'nsFrame'>
 
 const PHASE_DOT: Record<string, string> = {
-  Running: '#34d399',
-  Pending: '#fbbf24',
-  ContainerCreating: '#38bdf8',
+  Running: '#c69b4d',
+  Pending: '#c69b4d',
+  ContainerCreating: '#c69b4d',
   CrashLoopBackOff: '#f87171',
-  Terminating: '#a1a1aa',
-  Succeeded: '#2dd4bf',
+  Terminating: '#b6a27d',
+  Succeeded: '#c69b4d',
 }
 
 function TopoCard({ data }: NodeProps<TopoCardNode>) {
@@ -70,32 +70,21 @@ function TopoCard({ data }: NodeProps<TopoCardNode>) {
   const Icon = data.icon
   const isSel = selected === data.selectionId
   return (
-    <div
-      title="click to inspect · double-click to edit"
-      className={`group w-[190px] rounded-lg border bg-zinc-900/95 px-2.5 py-2 shadow-md transition-colors ${
-        isSel ? 'border-emerald-500 ring-1 ring-emerald-500/40' : 'border-zinc-700 hover:border-zinc-500'
-      } ${data.dim ? 'opacity-40' : ''}`}
-    >
-      <div className="flex items-center gap-2">
-        {/* invisible handles so v13 can wire edges (card → card, left → right) */}
-        <Handle type="target" position={Position.Left} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-cyan-400 !opacity-0 group-hover:!opacity-100" />
-        <Icon className="h-4 w-4 shrink-0" style={{ color: data.color }} />
+    <div title="click to inspect · double-click to edit" className={`topology-rack-card group w-[190px] ${isSel ? 'is-selected' : ''} ${data.dim ? 'is-dim' : ''}`} data-kind={data.kind}>
+      <div className="topology-rack-topline"><span className="rack-screw"/><span className="rack-screw"/><span className="rack-unit-label">{data.kind.toUpperCase()} / RESOURCE</span><span className="rack-screw"/></div>
+      <div className="topology-rack-body">
+        <Handle type="target" position={Position.Left} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-amber-500 !opacity-0 group-hover:!opacity-100"/>
+        <div className="topology-icon-bay"><Icon className="h-4 w-4 shrink-0" style={{color:'var(--brass-soft)'}}/></div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-[11px] font-medium text-zinc-100">{data.name}</span>
-            {data.dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: data.dot }} />}
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="shrink-0 text-[9px] uppercase tracking-wider text-zinc-500">{data.kind}</span>
-            <span className="truncate text-[9px] text-zinc-500">{data.sub}</span>
-          </div>
+          <div className="flex items-center gap-1.5"><span className="truncate font-mono text-[11px] font-medium topology-resource-name">{data.name}</span>{data.dot&&<span className="topology-status-led" style={{background:data.dot}}/>}</div>
+          <div className="flex items-center justify-between gap-2 mt-1"><span className="shrink-0 text-[11px] uppercase tracking-wider topology-resource-kind">{data.kind}</span><span className="truncate text-[11px] topology-resource-sub">{data.sub}</span></div>
         </div>
-        <Handle type="source" position={Position.Right} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-cyan-400 !opacity-0 group-hover:!opacity-100" />
+        <Handle type="source" position={Position.Right} isConnectable={true} className="!h-2 !w-2 !border-0 !bg-amber-500 !opacity-0 group-hover:!opacity-100"/>
       </div>
+      <div className="topology-rack-footer"><span>UNIT STATUS</span><span>{data.dim?'INACTIVE':data.dot?'INDICATED':'REGISTERED'}</span></div>
     </div>
   )
 }
-
 function NsFrame({ data }: NodeProps<NsFrameNode>) {
   return (
     <div
@@ -145,13 +134,13 @@ export function TopologyCanvas() {
     let totalRes = 0
     let cursorY = 0
 
-    const ownStyle = { stroke: '#71717a', strokeWidth: 1.5 }
-    const faded = { stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }
+    const ownStyle = { stroke: '#8e7955', strokeWidth: 1.5 }
+    const faded = { stroke: '#766f61', strokeWidth: 1, strokeDasharray: '4 4' }
     const svcStyle = { stroke: '#b58a43', strokeWidth: 2 }
-    const cmStyle = { stroke: '#fbbf24', strokeWidth: 1.5, strokeDasharray: '6 3' }
-    const secStyle = { stroke: '#e879f9', strokeWidth: 1.5, strokeDasharray: '6 3' }
-    const cjStyle = { stroke: '#a78bfa', strokeWidth: 1.5 }
-    const pvcStyle = { stroke: '#f472b6', strokeWidth: 1.5, strokeDasharray: '2 4' }
+    const cmStyle = { stroke: '#b58a43', strokeWidth: 1.5, strokeDasharray: '6 3' }
+    const secStyle = { stroke: '#9b835d', strokeWidth: 1.5, strokeDasharray: '6 3' }
+    const cjStyle = { stroke: '#a68b60', strokeWidth: 1.5 }
+    const pvcStyle = { stroke: '#ad8b58', strokeWidth: 1.5, strokeDasharray: '2 4' }
     const ingStyle = { stroke: '#c69b4d', strokeWidth: 2 }
 
     for (const ns of visibleNs) {
@@ -182,7 +171,7 @@ export function TopologyCanvas() {
           name: g.name,
           sub: `${g.host}${g.path}`,
           icon: Globe as LucideIcon,
-          color: '#fb7185',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: false,
         })),
@@ -192,7 +181,7 @@ export function TopologyCanvas() {
           name: v.name,
           sub: `${v.type} · ${v.clusterIP}`,
           icon: Network as LucideIcon,
-          color: '#38bdf8',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: false,
         })),
@@ -202,7 +191,7 @@ export function TopologyCanvas() {
           name: c.name,
           sub: `${Object.keys(c.data).length} keys`,
           icon: FileJson as LucideIcon,
-          color: '#fbbf24',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: false,
         })),
@@ -212,8 +201,8 @@ export function TopologyCanvas() {
           name: c.name,
           sub: `${c.sizeGi}Gi · ${c.status}`,
           icon: HardDrive as LucideIcon,
-          color: '#f472b6',
-          dot: c.status === 'Bound' ? '#f472b6' : '#fbbf24',
+          color: '#b58a43',
+          dot: c.status === 'Bound' ? '#b58a43' : '#c69b4d',
           dim: false,
         })),
         ...nsSecs.map((c) => ({
@@ -222,7 +211,7 @@ export function TopologyCanvas() {
           name: c.name,
           sub: `${Object.keys(c.data).length} keys`,
           icon: KeyRound as LucideIcon,
-          color: '#e879f9',
+          color: '#b58a43',
           dot: null as string | null,
           dim: false,
         })),
@@ -235,7 +224,7 @@ export function TopologyCanvas() {
           name: d.name,
           sub: `${d.replicas} replicas · ${d.image}`,
           icon: Layers as LucideIcon,
-          color: '#34d399',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: false,
         })),
@@ -245,7 +234,7 @@ export function TopologyCanvas() {
           name: d.name,
           sub: `every node · ${d.image}`,
           icon: Server as LucideIcon,
-          color: '#fb923c',
+          color: '#b58a43',
           dot: null as string | null,
           dim: false,
         })),
@@ -255,7 +244,7 @@ export function TopologyCanvas() {
           name: d.name,
           sub: `${d.replicas} replicas · ${d.image}`,
           icon: Boxes as LucideIcon,
-          color: '#60a5fa',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: false,
         })),
@@ -265,7 +254,7 @@ export function TopologyCanvas() {
           name: c.name,
           sub: `every ${c.schedule.replace('*/', '')}s · ${c.completions} done`,
           icon: Clock as LucideIcon,
-          color: '#a78bfa',
+          color: '#b58a43',
           dot: null as string | null,
           dim: false,
         })),
@@ -278,7 +267,7 @@ export function TopologyCanvas() {
           name: r.name,
           sub: r.superseded ? `superseded rev ${r.revision}` : `rev ${r.revision} · ${r.replicas} replicas`,
           icon: Copy as LucideIcon,
-          color: '#2dd4bf',
+          color: '#c69b4d',
           dot: null as string | null,
           dim: r.superseded,
         })),
@@ -288,8 +277,8 @@ export function TopologyCanvas() {
           name: j.name,
           sub: j.status === 'Complete' ? 'complete' : 'running',
           icon: Briefcase as LucideIcon,
-          color: '#22d3ee',
-          dot: j.status === 'Complete' ? '#2dd4bf' : '#38bdf8',
+          color: '#c69b4d',
+          dot: j.status === 'Complete' ? '#c69b4d' : '#c69b4d',
           dim: j.status === 'Complete',
         })),
       ]
@@ -302,8 +291,8 @@ export function TopologyCanvas() {
           name: p.name,
           sub: `${p.phase}${p.restarts > 0 ? ` · ${p.restarts}R` : ''}${crashBadge}`,
           icon: Package as LucideIcon,
-          color: '#a1a1aa',
-          dot: PHASE_DOT[p.phase] ?? '#a1a1aa',
+          color: '#b6a27d',
+          dot: PHASE_DOT[p.phase] ?? '#b6a27d',
           dim: p.phase === 'Terminating' || p.phase === 'Succeeded',
         }
       })
@@ -338,11 +327,11 @@ export function TopologyCanvas() {
             id: 't-traffic-client',
             type: 'topoCard',
             position: { x: -240, y: ingressNode.position.y },
-            data: { selectionId: 'traffic:client', kind: 'client', name: 'external-client', sub: 'HTTP request', icon: Globe as LucideIcon, color: '#22d3ee', dot: '#22d3ee', dim: false },
+            data: { selectionId: 'traffic:client', kind: 'client', name: 'external-client', sub: 'HTTP request', icon: Globe as LucideIcon, color: '#c69b4d', dot: '#c69b4d', dim: false },
             selectable: false,
             draggable: false,
           } as TopoCardNode)
-          edges.push({ id: 'e-client-ingress', source: 't-traffic-client', target: nid('ingress', trafficRoute.ingressId), style: { stroke: '#22d3ee', strokeWidth: 3 } })
+          edges.push({ id: 'e-client-ingress', source: 't-traffic-client', target: nid('ingress', trafficRoute.ingressId), style: { stroke: '#c69b4d', strokeWidth: 3 } })
         }
       }
 
@@ -529,12 +518,12 @@ export function TopologyCanvas() {
         <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Topology legend</div>
         {[
           { style: '#71717a', dash: false, label: 'owns (dep → RS → pod)' },
-          { style: '#38bdf8', dash: false, label: 'selects pods (service)' },
-          { style: '#fbbf24', dash: true, label: 'env from ConfigMap' },
-          { style: '#e879f9', dash: true, label: 'env from Secret' },
-          { style: '#a78bfa', dash: false, label: 'triggers (cronjob)' },
-          { style: '#f472b6', dash: true, label: 'mounts PVC (statefulset)' },
-          { style: '#fb7185', dash: false, label: 'routes to service (ingress)' },
+          { style: '#c69b4d', dash: false, label: 'selects pods (service)' },
+          { style: '#c69b4d', dash: true, label: 'env from ConfigMap' },
+          { style: '#b58a43', dash: true, label: 'env from Secret' },
+          { style: '#b58a43', dash: false, label: 'triggers (cronjob)' },
+          { style: '#b58a43', dash: true, label: 'mounts PVC (statefulset)' },
+          { style: '#c69b4d', dash: false, label: 'routes to service (ingress)' },
         ].map((l) => (
           <div key={l.label} className="flex items-center gap-2 py-0.5">
             <span
