@@ -88,7 +88,7 @@ export function ClusterCanvas() {
           source: 'cp1',
           target: n.id,
           animated: running,
-          style: { stroke: '#52525b', strokeWidth: 2 },
+          style: { stroke: '#927442', strokeWidth: 1.5 },
         })),
     [nodes, running]
   )
@@ -147,7 +147,7 @@ export function ClusterCanvas() {
         nodesConnectable={false}
         className="bg-zinc-950"
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#3f3f46" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#8c7955" />
         <Controls
           className="!bg-zinc-900 !border-zinc-700 [&_button]:!bg-zinc-900 [&_button]:!border-zinc-700 [&_button]:!fill-zinc-400 hover:[&_button]:!bg-zinc-800"
           showInteractive={false}

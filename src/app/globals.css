@@ -154,7 +154,7 @@ body{font-size:12px;background:var(--canvas);color:var(--ink)}
 .control-room-shell{height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:var(--canvas);color:var(--ink);font-family:var(--font-geist-sans),sans-serif}
 .control-header{min-height:62px;display:flex;align-items:center;gap:16px;padding:8px 18px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--line);color:var(--ink)}
 .brand-mark{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--brass);color:var(--brass-soft);font-size:23px;background:color-mix(in srgb,var(--brass) 9%,transparent)}
-.brand-title{font:600 19px/1.05 'Fraunces',Georgia,serif;letter-spacing:-.02em;color:var(--paper)}
+.brand-title{font:600 19px/1.05 var(--font-fraunces),Georgia,serif;letter-spacing:-.02em;color:var(--paper)}
 html[data-theme="blueprint"] .brand-title{color:var(--ink)}
 .brand-subtitle{margin-top:4px;font:11px var(--font-geist-mono),monospace;letter-spacing:.12em;color:var(--muted-ink)}
 .status-led{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--brass);box-shadow:0 0 9px color-mix(in srgb,var(--brass) 65%,transparent);vertical-align:middle;margin:0 4px}

@@ -147,12 +147,12 @@ export function TopologyCanvas() {
 
     const ownStyle = { stroke: '#71717a', strokeWidth: 1.5 }
     const faded = { stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }
-    const svcStyle = { stroke: '#38bdf8', strokeWidth: 2 }
+    const svcStyle = { stroke: '#b58a43', strokeWidth: 2 }
     const cmStyle = { stroke: '#fbbf24', strokeWidth: 1.5, strokeDasharray: '6 3' }
     const secStyle = { stroke: '#e879f9', strokeWidth: 1.5, strokeDasharray: '6 3' }
     const cjStyle = { stroke: '#a78bfa', strokeWidth: 1.5 }
     const pvcStyle = { stroke: '#f472b6', strokeWidth: 1.5, strokeDasharray: '2 4' }
-    const ingStyle = { stroke: '#fb7185', strokeWidth: 2 }
+    const ingStyle = { stroke: '#c69b4d', strokeWidth: 2 }
 
     for (const ns of visibleNs) {
       const nsPods = pods.filter((p) => p.namespace === ns.name)
@@ -455,7 +455,7 @@ export function TopologyCanvas() {
       `e-svc-${trafficRoute.serviceId}-${trafficRoute.podId}`,
     ]) : null
     const flowEdges: Edge[] = edges.map((edge) => {
-      const stroke = activeTrafficEdges?.has(edge.id) ? '#22d3ee' : (edge.style?.stroke as string | undefined) ?? '#71717a'
+      const stroke = activeTrafficEdges?.has(edge.id) ? '#e0b45f' : (edge.style?.stroke as string | undefined) ?? '#71717a'
       return {
         ...edge,
         type: 'smoothstep',
