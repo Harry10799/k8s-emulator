@@ -57,12 +57,12 @@ type NsFrameData = { ns: string; count: number; width: number; height: number }
 type NsFrameNode = Node<NsFrameData, 'nsFrame'>
 
 const PHASE_DOT: Record<string, string> = {
-  Running: '#c69b4d',
-  Pending: '#c69b4d',
-  ContainerCreating: '#c69b4d',
+  Running: '#34d399',
+  Pending: '#fbbf24',
+  ContainerCreating: '#38bdf8',
   CrashLoopBackOff: '#f87171',
-  Terminating: '#b6a27d',
-  Succeeded: '#c69b4d',
+  Terminating: '#a1a1aa',
+  Succeeded: '#2dd4bf',
 }
 
 function TopoCard({ data }: NodeProps<TopoCardNode>) {
@@ -88,10 +88,10 @@ function TopoCard({ data }: NodeProps<TopoCardNode>) {
 function NsFrame({ data }: NodeProps<NsFrameNode>) {
   return (
     <div
-      className="rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25"
+      className="namespace-blueprint-frame"
       style={{ width: data.width, height: data.height }}
     >
-      <div className="px-3 pt-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+      <div className="namespace-blueprint-label">
         namespace / {data.ns} · {data.count} resources
       </div>
     </div>

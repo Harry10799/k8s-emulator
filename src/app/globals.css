@@ -255,3 +255,7 @@ html[data-theme="blueprint"] .topology-rack-topline,html[data-theme="blueprint"]
 html[data-theme="blueprint"] .topology-icon-bay{background:#e9dfca}
 html[data-theme="blueprint"] .topology-rack-card .topology-resource-name{color:#29271f}
 html[data-theme="blueprint"] .react-flow__edge-path{stroke:#94713b}
+
+.namespace-blueprint-frame{border:1px dashed color-mix(in srgb,var(--brass) 38%,var(--line));border-radius:5px;background:color-mix(in srgb,var(--panel) 18%,transparent)}
+.namespace-blueprint-label{padding:8px 12px 0;font:11px var(--font-geist-mono),monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-ink)}
+html[data-theme="blueprint"] .namespace-blueprint-frame{background:rgba(157,126,72,.035);border-color:rgba(122,91,43,.35)}
