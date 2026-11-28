@@ -221,3 +221,8 @@ html[data-theme="blueprint"] .command-dialog{color:var(--ink)}
 .control-room-shell [class*="text-[9px]"],.control-room-shell [class*="text-[10px]"],.control-room-shell [class*="text-[10.5px]"]{font-size:11px!important}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 @media(max-width:767px){.explorer-pane,.inspector-pane{display:none}.control-header{padding:7px 9px}.brand-subtitle,.control-header .toolbar-select,.command-hint{display:none}.drawer-expanded{height:190px}}
+
+/* Brass is the sole interface accent; semantic health states keep their LEDs. */
+.control-room-shell [class*="text-emerald-"],.control-room-shell [class*="text-cyan-"],.control-room-shell [class*="text-sky-"]{color:var(--brass-soft)!important}
+.control-room-shell [class*="border-emerald-"],.control-room-shell [class*="border-cyan-"],.control-room-shell [class*="border-sky-"]{border-color:color-mix(in srgb,var(--brass) 55%,var(--line))!important}
+.control-room-shell [class*="bg-emerald-950"],.control-room-shell [class*="bg-cyan-950"],.control-room-shell [class*="bg-sky-950"]{background-color:color-mix(in srgb,var(--brass) 13%,var(--panel))!important}
