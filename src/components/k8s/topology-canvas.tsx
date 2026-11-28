@@ -28,6 +28,7 @@ import {
   Briefcase,
   HardDrive,
   Globe,
+  Activity,
   type LucideIcon,
 } from 'lucide-react'
 import { useCluster } from '@/lib/cluster-store'
@@ -35,6 +36,7 @@ import { getCanvasRuntimeState } from '../../../engine/canvas-runtime'
 import { useEngineSnapshot } from '@/lib/engine-store'
 import { useConnections } from '@/hooks/use-connections'
 import { useTraffic } from '@/hooks/use-traffic'
+import { TrafficDashboard } from '@/components/k8s/traffic-dashboard'
 
 // ---------------------------------------------------------------- card sizes
 const NW = 190 // card width
@@ -122,6 +124,7 @@ export function TopologyCanvas() {
   const selectedResource = useCluster((s) => s.selected)
   const engineState = useEngineSnapshot((state) => state)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const [showTrafficDashboard, setShowTrafficDashboard] = useState(false)
   const setEditing = useCluster((s) => s.setEditing)
   const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, lastTrafficResult, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
@@ -523,6 +526,20 @@ export function TopologyCanvas() {
           showInteractive={false}
         />
       </ReactFlow>
+
+      <div className="absolute right-3 top-3 z-20">
+        <button
+          type="button"
+          onClick={() => setShowTrafficDashboard(value => !value)}
+          aria-expanded={showTrafficDashboard}
+          className="flex items-center gap-2 rounded-lg border border-amber-600/40 bg-[var(--panel)] px-3 py-2 text-[11px] font-semibold text-[var(--foreground)] shadow-lg hover:border-amber-500"
+        >
+          <Activity className="h-3.5 w-3.5 text-amber-500" />
+          Traffic telemetry
+          <span className="font-mono text-[10px] text-[var(--muted-foreground)]">{engineState.trafficRequestCount ?? 0}</span>
+        </button>
+      </div>
+      {showTrafficDashboard && <TrafficDashboard state={engineState} activeNamespace={activeNamespace} onClose={() => setShowTrafficDashboard(false)} />}
 
       {selectedEdgeId && (() => {
         const edge = flowEdges.find((item) => item.id === selectedEdgeId)

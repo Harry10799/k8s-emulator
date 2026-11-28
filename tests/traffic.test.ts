@@ -22,6 +22,8 @@ describe("engine traffic routing", () => {
     expect(result.reason).toBe("NoReadyEndpoints");
     expect(initial.trafficRequestCount).toBeUndefined();
     expect(state.trafficRequestCount).toBe(1);
+    expect(state.trafficHistory).toHaveLength(1);
+    expect(state.trafficHistory?.[0]).toMatchObject({ namespace: "default", serviceName: "web", statusCode: 503, ok: false, reason: "NoReadyEndpoints" });
   });
 
   it("routes only through a published Ready endpoint", () => {
@@ -31,6 +33,17 @@ describe("engine traffic routing", () => {
     const { result } = simulateServiceRequest(initial, "default", "web");
     expect(result.podName).toBe("web-0");
     expect([200, 502]).toContain(result.statusCode);
+    const routed = simulateServiceRequest(initial, "default", "web");
+    expect(routed.state.trafficHistory?.[0]).toMatchObject({ podName: "web-0", serviceName: "web" });
+  });
+
+  it("retains only the newest 120 real request outcomes", () => {
+    let state = createInitialState([service]);
+    for (let index = 0; index < 125; index++) state = simulateServiceRequest(state, "default", "web").state;
+    expect(state.trafficRequestCount).toBe(125);
+    expect(state.trafficHistory).toHaveLength(120);
+    expect(state.trafficHistory?.[0].requestNumber).toBe(6);
+    expect(state.trafficHistory?.at(-1)?.requestNumber).toBe(125);
   });
 
   it("rejects a stale endpoint if its Pod is no longer Ready", () => {

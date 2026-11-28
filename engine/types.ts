@@ -235,6 +235,19 @@ export interface EngineEvent {
   object: string;
 }
 
+export interface TrafficSample {
+  tick: number;
+  requestNumber: number;
+  namespace: string;
+  serviceName: string;
+  podName?: string;
+  statusCode: number;
+  ok: boolean;
+  latencyMs: number;
+  errorRate: number;
+  reason?: string;
+}
+
 export interface EngineState {
   tick: number;
   nextId: number;
@@ -250,6 +263,8 @@ export interface EngineState {
   simulatedLoadPercent?: number;
   /** Monotonic deterministic request sequence for replayable traffic simulation. */
   trafficRequestCount?: number;
+  /** Bounded, real outcomes from manually simulated Service requests (newest last). */
+  trafficHistory?: TrafficSample[];
   /** Configured request rate used as an additional deterministic workload load source. */
   simulatedRequestsPerSecond?: number;
 }
