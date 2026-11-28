@@ -259,3 +259,16 @@ html[data-theme="blueprint"] .react-flow__edge-path{stroke:#94713b}
 .namespace-blueprint-frame{border:1px dashed color-mix(in srgb,var(--brass) 38%,var(--line));border-radius:5px;background:color-mix(in srgb,var(--panel) 18%,transparent)}
 .namespace-blueprint-label{padding:8px 12px 0;font:11px var(--font-geist-mono),monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-ink)}
 html[data-theme="blueprint"] .namespace-blueprint-frame{background:rgba(157,126,72,.035);border-color:rgba(122,91,43,.35)}
+
+/* Responsive explorer sizing: preserve a real canvas beside both side panels. */
+.pane-open.explorer-pane{width:clamp(220px,24vw,292px);min-width:220px;max-width:292px}
+.pane-open.inspector-pane{width:clamp(248px,27vw,300px);min-width:248px;max-width:300px}
+.explorer-pane>.flex,.explorer-pane [data-radix-scroll-area-viewport],.explorer-pane [data-radix-scroll-area-viewport]>div{min-width:0;max-width:100%}
+.explorer-pane .pane-tabs{width:calc(100% - 20px);min-width:0}
+.explorer-pane .pane-tabs [data-slot="trigger"]{min-width:0;padding-inline:8px}
+.explorer-pane [data-radix-scroll-area-viewport]{overflow-x:hidden!important}
+.explorer-pane [data-radix-scroll-area-viewport]>div{min-width:0!important}
+.explorer-pane .group{width:100%;min-width:0}
+.explorer-pane .group>div{min-width:0}
+@media(max-width:1023px) and (min-width:768px){.pane-open.explorer-pane{width:224px;min-width:224px}.pane-open.inspector-pane{width:248px;min-width:248px}}
+@media(max-width:767px){.explorer-pane,.inspector-pane{display:none}.explorer-mobile-trigger{display:flex}}
