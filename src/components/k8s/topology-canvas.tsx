@@ -32,6 +32,7 @@ import {
 } from 'lucide-react'
 import { useCluster } from '@/lib/cluster-store'
 import { getCanvasRuntimeState } from '../../../engine/canvas-runtime'
+import { useEngineSnapshot } from '@/lib/engine-store'
 import { useConnections } from '@/hooks/use-connections'
 import { useTraffic } from '@/hooks/use-traffic'
 
@@ -119,9 +120,10 @@ export function TopologyCanvas() {
   const running = useCluster((s) => s.running)
   const select = useCluster((s) => s.select)
   const selectedResource = useCluster((s) => s.selected)
+  const engineState = useEngineSnapshot((state) => state)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const setEditing = useCluster((s) => s.setEditing)
-  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
+  const { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, lastTrafficResult, sendRequest, trafficRps, setTrafficRps } = useTraffic(activeNamespace)
   const onConnect = useConnections(setTrafficMessage)
 
   const { flowNodes, flowEdges, total } = useMemo(() => {
@@ -490,7 +492,7 @@ export function TopologyCanvas() {
     })
 
     return { flowNodes, flowEdges, total: totalRes }
-  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running, trafficRoute, selectedResource, selectedEdgeId])
+  }, [pods, deployments, replicaSets, daemonSets, statefulSets, services, configMaps, secrets, cronJobs, jobs, pvcs, ingresses, namespaces, activeNamespace, running, trafficRoute, selectedResource, selectedEdgeId, engineState, lastTrafficResult])
 
   return (
     <div className="relative h-full w-full bg-zinc-950">
@@ -538,7 +540,11 @@ export function TopologyCanvas() {
           : edge.id.startsWith('e-pvc-') ? 'Persistent volume is mounted / claimed'
           : 'Controller ownership relationship'
         const health = (data: TopoCardData) => data.kind !== 'pod' ? 'n/a' : data.sub.split(' · ')[0]
-        return <div className="absolute left-1/2 top-3 z-30 w-[min(390px,calc(100%-24px))] -translate-x-1/2 rounded-xl border border-amber-600/40 bg-[var(--panel)] p-3 shadow-2xl">
+        const serviceUid = sourceData.kind === 'service' ? sourceData.selectionId.split(':')[1] : targetData.kind === 'service' ? targetData.selectionId.split(':')[1] : null
+        const serviceResource = serviceUid ? Object.values(engineState.resources).find(resource => resource.kind === 'Service' && resource.metadata.uid === serviceUid) : null
+        const readyEndpoints = serviceResource?.kind === 'Service' ? serviceResource.status.endpoints : []
+        const latestRequest = serviceResource?.kind === 'Service' && lastTrafficResult?.namespace === (serviceResource.metadata.namespace ?? 'default') && lastTrafficResult.result.serviceName === serviceResource.metadata.name ? lastTrafficResult.result : null
+        return <div className="absolute left-1/2 top-3 z-30 w-[min(420px,calc(100%-24px))] -translate-x-1/2 rounded-xl border border-amber-600/40 bg-[var(--panel)] p-3 shadow-2xl">
           <div className="flex items-center justify-between gap-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-500">Relationship inspector</div>
             <button onClick={() => setSelectedEdgeId(null)} className="rounded border border-[var(--border)] px-2 py-1 text-[10px]">Close</button>
@@ -549,7 +555,16 @@ export function TopologyCanvas() {
             <span className="text-amber-500">→</span>
             <div className="min-w-0 text-right"><div className="truncate font-mono">{targetData.name}</div><div className="mt-1 text-[10px] uppercase text-[var(--muted-foreground)]">{targetData.kind}</div><div className="mt-1 text-[10px] text-[var(--muted-foreground)]">Endpoint: {health(targetData)}</div></div>
           </div>
-          <div className="mt-2 border-t border-[var(--border)] pt-2 text-[10px] text-[var(--muted-foreground)]">Traffic: {edge.id.startsWith('e-svc-') ? 'Ready endpoint membership; request volume is modeled by the traffic simulator.' : edge.id.startsWith('e-ing-') ? 'Routing rule relationship; use Send test request to simulate a request.' : 'Control-plane relationship; no per-edge traffic metric is modeled.'}</div>
+          {serviceResource?.kind === 'Service' && <div className="mt-3 rounded-lg border border-[var(--border)] p-2">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]"><span>Live Service endpoints</span><b className={readyEndpoints.length ? 'text-emerald-400' : 'text-amber-400'}>{readyEndpoints.length} ready</b></div>
+            {readyEndpoints.length ? <div className="mt-1.5 flex flex-wrap gap-1">{readyEndpoints.map(endpoint => <span key={endpoint.podUid} className="rounded border border-emerald-500/25 bg-emerald-500/5 px-1.5 py-1 font-mono text-[10px]">{endpoint.podName}</span>)}</div> : <div className="mt-1 text-[10px] text-amber-400">No Ready endpoints published by the Service controller.</div>}
+          </div>}
+          {latestRequest && <div className="mt-2 rounded-lg border border-[var(--border)] p-2">
+            <div className="flex items-center justify-between"><span className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">Latest simulated request</span><b className={latestRequest.ok ? 'text-emerald-400' : 'text-red-400'}>{latestRequest.statusCode} · {latestRequest.ok ? 'SUCCESS' : 'FAILED'}</b></div>
+            <div className="mt-1 grid grid-cols-3 gap-2 text-[10px]"><span>Pod<b className="block truncate font-mono text-[var(--foreground)]">{latestRequest.podName ?? '—'}</b></span><span>Latency<b className="block text-[var(--foreground)]">{latestRequest.latencyMs} ms</b></span><span>Modeled error<b className="block text-[var(--foreground)]">{Math.round(latestRequest.errorRate * 100)}%</b></span></div>
+            {latestRequest.reason && <div className="mt-1 text-[10px] text-red-400">Reason: {latestRequest.reason}</div>}
+          </div>}
+          <div className="mt-2 border-t border-[var(--border)] pt-2 text-[10px] text-[var(--muted-foreground)]">Traffic: {serviceResource?.kind === 'Service' ? 'Endpoint membership is live engine state; request outcome is the latest simulated request.' : edge.id.startsWith('e-ing-') ? 'Routing rule relationship; send a test request to inspect the backend outcome.' : 'Control-plane relationship; no per-edge traffic metric is modeled.'}</div>
         </div>
       })()}
 

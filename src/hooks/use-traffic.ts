@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useCluster } from '@/lib/cluster-store'
 import { engineStore } from '@/lib/engine-store'
+import type { TrafficResult } from '../../engine/traffic'
 
 export interface TrafficRoute { ingressId: string; serviceId: string; podId: string }
 
@@ -10,6 +11,7 @@ export function useTraffic(activeNamespace: string) {
   const [selectedIngressId, setSelectedIngressId] = useState('')
   const [trafficRoute, setTrafficRoute] = useState<TrafficRoute | null>(null)
   const [trafficMessage, setTrafficMessage] = useState('')
+  const [lastTrafficResult, setLastTrafficResult] = useState<{ namespace: string; result: TrafficResult } | null>(null)
   const [trafficRps, setTrafficRpsState] = useState(engineStore.getSnapshot().simulatedRequestsPerSecond ?? 0)
   const setTrafficRps = useCallback((value: number) => { const next = Math.max(0, Math.min(100, Math.round(value))); setTrafficRpsState(next); engineStore.setTrafficRps(next) }, [])
   useEffect(() => {
@@ -24,10 +26,11 @@ export function useTraffic(activeNamespace: string) {
     const service = state.services.find(item => item.namespace === ingress.namespace && item.name === ingress.serviceName)
     if (!service) { setTrafficMessage(`Ingress ${ingress.name} has no matching Service backend`); return }
     const result = engineStore.simulateTraffic(ingress.namespace, service.name)
+    setLastTrafficResult({ namespace: ingress.namespace, result })
     if (!result.podName) { setTrafficMessage(`Request ${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} · ${result.reason}`); return }
     const podId = state.pods.find(pod => pod.namespace === ingress.namespace && pod.name === result.podName)?.id ?? ''
     setTrafficMessage(`${result.statusCode} · ${ingress.host}${ingress.path} → ${service.name} → ${result.podName} · ${result.latencyMs}ms · ${Math.round(result.errorRate * 100)}% modeled error rate${result.ok ? '' : ' · upstream error'}`)
     setTrafficRoute({ ingressId: ingress.id, serviceId: service.id, podId })
   }, [activeNamespace, selectedIngressId])
-  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, sendRequest, trafficRps, setTrafficRps }
+  return { selectedIngressId, setSelectedIngressId, trafficRoute, trafficMessage, setTrafficMessage, lastTrafficResult, sendRequest, trafficRps, setTrafficRps }
 }
