@@ -1,8 +1,7 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine, Boxes, ChevronLeft, ChevronRight, PanelLeft, PanelRight, Activity, LayoutDashboard } from 'lucide-react'
+import { Play, Pause, Plus, RotateCcw, Gauge, Zap, PencilLine, Boxes, ChevronLeft, ChevronRight, PanelLeft, PanelRight, Activity, LayoutDashboard, Sun, Moon, Command, Terminal, Clock3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
@@ -18,135 +17,12 @@ import { NodeInternalsDialog } from '@/components/k8s/node-internals'
 import { EventFeed } from '@/components/k8s/event-feed'
 import { ResourceList } from '@/components/k8s/resource-list'
 import { SimulationLab } from '@/components/k8s/simulation-lab'
-import { SimulationLab } from '@/components/k8s/simulation-lab'
+import { CommandPalette } from '@/components/k8s/command-palette'
+import { ConsolePanel } from '@/components/k8s/console-panel'
 
-function Toolbar() {
-  const running = useCluster((s) => s.running)
-  const speed = useCluster((s) => s.speed)
-  const chaos = useCluster((s) => s.chaos)
-  const setRunning = useCluster((s) => s.setRunning)
-  const setSpeed = useCluster((s) => s.setSpeed)
-  const setChaos = useCluster((s) => s.setChaos)
-  const addNode = useCluster((s) => s.addNode)
-  const reset = useCluster((s) => s.reset)
-  const namespaces = useCluster((s) => s.namespaces)
-  const activeNamespace = useCluster((s) => s.activeNamespace)
-  const setNamespace = useCluster((s) => s.setNamespace)
-
-  return (
-    <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2 shrink-0">
-      <div className="flex items-center gap-2">
-        <span className="text-lg leading-none">⎈</span>
-        <div>
-          <div className="text-sm font-bold text-zinc-100 tracking-tight">k8s playground</div>
-          <div className="text-[9px] text-zinc-500 -mt-0.5 hidden sm:block">full-fledged cluster simulator · everything editable</div>
-        </div>
-      </div>
-
-      <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
-        <Button size="sm" variant={running ? 'secondary' : 'default'} className="h-8 text-xs" onClick={() => setRunning(!running)}>
-          {running ? <Pause className="h-3.5 w-3.5 mr-1" /> : <Play className="h-3.5 w-3.5 mr-1" />}
-          {running ? 'Pause' : 'Resume'}
-        </Button>
-
-        <div className="flex items-center gap-1 text-zinc-500" title="Filter resources by namespace">
-          <Boxes className="h-3.5 w-3.5" />
-          <Select value={activeNamespace} onValueChange={(v) => setNamespace(v)}>
-            <SelectTrigger className="h-8 w-[110px] text-xs border-zinc-700 bg-zinc-900">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-700">
-              <SelectItem value="all" className="text-xs font-mono">all namespaces</SelectItem>
-              {namespaces.map((ns) => (
-                <SelectItem key={ns.id} value={ns.name} className="text-xs font-mono">ns/{ns.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-1.5 text-zinc-500">
-          <Gauge className="h-3.5 w-3.5" />
-          <Select value={String(speed)} onValueChange={(v) => setSpeed(Number(v))}>
-            <SelectTrigger className="h-8 w-[64px] text-xs border-zinc-700 bg-zinc-900">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-700">
-              {[0.5, 1, 2, 4].map((s) => (
-                <SelectItem key={s} value={String(s)} className="text-xs">{s}x</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          size="sm"
-          variant={chaos ? 'destructive' : 'outline'}
-          className={`h-8 text-xs ${chaos ? '' : 'border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-500/50'}`}
-          onClick={() => setChaos(!chaos)}
-          aria-pressed={chaos}
-        >
-          <Zap className="h-3.5 w-3.5 mr-1" /> Chaos
-        </Button>
-
-        <Button size="sm" variant="outline" className="h-8 text-xs border-zinc-700 text-zinc-400 hover:text-emerald-400 hover:border-emerald-600/50" onClick={addNode}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Node
-        </Button>
-
-        <Button size="sm" variant="outline" className="h-8 text-xs border-zinc-700 text-zinc-400 hover:text-zinc-200" onClick={reset}>
-          <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
-        </Button>
-      </div>
-    </header>
-  )
-}
-
-/* On screens narrower than lg the right-side inspector panel is hidden.
-   This floating button opens the same Inspector in a sheet so edit/delete
-   actions are reachable at every viewport size. */
-function InspectorSheet() {
-  const [open, setOpen] = useState(false)
-  const selected = useCluster((s) => s.selected)
-
-  // auto-open ONLY on small screens; on lg+ the side inspector is already
-  // visible and an open sheet would block the canvas with its overlay
-  useEffect(() => {
-    const small = !window.matchMedia('(min-width: 1024px)').matches
-    setOpen(small && !!selected)
-  }, [selected])
-
-  // close when growing to lg (overlay would block the canvas)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const onChange = () => { if (mq.matches) setOpen(false) }
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <button
-          aria-label="Inspect / edit selected resource"
-          className="lg:hidden fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-emerald-600/50 bg-zinc-900/95 px-3.5 py-2.5 text-xs font-mono text-emerald-400 shadow-lg hover:bg-zinc-800 transition-colors"
-        >
-          <PencilLine className="h-4 w-4" />
-          Inspect / Edit
-          {selected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-        </button>
-      </SheetTrigger>
-      <SheetContent side="right" className="w-80 border-zinc-800 bg-zinc-950 p-0 overflow-y-auto custom-scroll">
-        <SheetTitle className="sr-only">Inspector</SheetTitle>
-        <Inspector />
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-export default function Home() {
- const [activeView,setActiveView]=useState<'workbench'|'lab'>('workbench'),[leftOpen,setLeftOpen]=useState(true),[rightOpen,setRightOpen]=useState(true)
- return <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 antialiased"><Toolbar/><div className="flex min-h-0 flex-1">
- <aside className={`hidden md:flex shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 transition-[width] duration-200 ${leftOpen?'w-60':'w-12'}`}><div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-2">{leftOpen&&<span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Explorer</span>}<button onClick={()=>setLeftOpen(v=>!v)} aria-label={leftOpen?'Collapse explorer':'Expand explorer'} title={leftOpen?'Collapse explorer':'Expand explorer'} className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">{leftOpen?<ChevronLeft className="h-4 w-4"/>:<ChevronRight className="h-4 w-4"/>}</button></div>{leftOpen?<Tabs defaultValue="create" className="flex min-h-0 flex-1 flex-col"><TabsList className="mx-3 mt-2 grid grid-cols-2 bg-zinc-900 border border-zinc-800 shrink-0"><TabsTrigger value="create" className="text-xs data-[state=active]:bg-zinc-800">Create</TabsTrigger><TabsTrigger value="resources" className="text-xs data-[state=active]:bg-zinc-800">Resources</TabsTrigger></TabsList><TabsContent value="create" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><Palette/></ScrollArea></TabsContent><TabsContent value="resources" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><ResourceList/></ScrollArea></TabsContent></Tabs>:<div className="flex flex-col items-center gap-3 pt-3 text-zinc-600"><PanelLeft className="h-4 w-4"/><Boxes className="h-4 w-4"/></div>}</aside>
- <main className="flex min-w-0 flex-1 flex-col"><div className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-3"><button onClick={()=>setActiveView('workbench')} aria-pressed={activeView==='workbench'} className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] ${activeView==='workbench'?'bg-zinc-800 text-emerald-300':'text-zinc-500 hover:text-zinc-200'}`}><LayoutDashboard className="h-3.5 w-3.5"/>Workbench</button><button onClick={()=>setActiveView('lab')} aria-pressed={activeView==='lab'} className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] ${activeView==='lab'?'bg-zinc-800 text-cyan-300':'text-zinc-500 hover:text-zinc-200'}`}><Activity className="h-3.5 w-3.5"/>Simulation Lab <span className="rounded bg-cyan-950 px-1.5 py-0.5 text-[9px] text-cyan-300">50 missions</span></button></div>{activeView==='workbench'?<><div className="relative min-h-0 flex-1"><ReactFlowProvider><ClusterCanvas/></ReactFlowProvider></div><div className="h-36 shrink-0"><EventFeed/></div></>:<div className="min-h-0 flex-1"><SimulationLab/></div>}</main>
- <aside className={`hidden lg:flex shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width] duration-200 ${rightOpen?'w-80':'w-12'}`}><div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-2">{rightOpen&&<span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Inspector</span>}<button onClick={()=>setRightOpen(v=>!v)} aria-label={rightOpen?'Collapse inspector':'Expand inspector'} title={rightOpen?'Collapse inspector':'Expand inspector'} className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">{rightOpen?<ChevronRight className="h-4 w-4"/>:<ChevronLeft className="h-4 w-4"/>}</button></div>{rightOpen?<div className="min-h-0 flex-1 overflow-y-auto custom-scroll"><Inspector/></div>:<div className="flex justify-center pt-3 text-zinc-600"><PanelRight className="h-4 w-4"/></div>}</aside>
- </div><InspectorSheet/><EditDialog/><NodeInternalsDialog/><Toaster theme="dark"/></div>
-}
+function ThemeToggle(){const [blueprint,setBlueprint]=useState(false);useEffect(()=>{const v=localStorage.getItem('k8s-emulator-theme')==='blueprint';setBlueprint(v);document.documentElement.dataset.theme=v?'blueprint':'night'},[]);const toggle=()=>{const v=!blueprint;setBlueprint(v);document.documentElement.dataset.theme=v?'blueprint':'night';localStorage.setItem('k8s-emulator-theme',v?'blueprint':'night')};return <button onClick={toggle} className="control-button" title="Toggle theme">{blueprint?<Moon size={15}/>:<Sun size={15}/>}<span>{blueprint?'Blueprint':'Night'}</span></button>}
+function Toolbar(){const running=useCluster(s=>s.running),speed=useCluster(s=>s.speed),chaos=useCluster(s=>s.chaos),setRunning=useCluster(s=>s.setRunning),setSpeed=useCluster(s=>s.setSpeed),setChaos=useCluster(s=>s.setChaos),addNode=useCluster(s=>s.addNode),reset=useCluster(s=>s.reset),namespaces=useCluster(s=>s.namespaces),activeNamespace=useCluster(s=>s.activeNamespace),setNamespace=useCluster(s=>s.setNamespace);return <header className="control-header"><div className="flex items-center gap-3 min-w-0"><div className="brand-mark">⎈</div><div><div className="brand-title">Cluster Control Room</div><div className="brand-subtitle">KUBERNETES SIMULATION ENVIRONMENT <span className="status-led"/> LIVE</div></div></div><div className="ml-auto flex items-center gap-2 flex-wrap justify-end"><Button size="sm" variant={running?'secondary':'default'} className="h-8 text-xs brass-button" onClick={()=>setRunning(!running)}>{running?<Pause className="h-3.5 w-3.5 mr-1"/>:<Play className="h-3.5 w-3.5 mr-1"/>}{running?'Pause':'Resume'}</Button><div className="toolbar-select"><Boxes size={14}/><Select value={activeNamespace} onValueChange={setNamespace}><SelectTrigger className="h-8 w-[116px] text-xs"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">all namespaces</SelectItem>{namespaces.map(ns=><SelectItem key={ns.id} value={ns.name}>ns/{ns.name}</SelectItem>)}</SelectContent></Select></div><div className="toolbar-select"><Gauge size={14}/><Select value={String(speed)} onValueChange={v=>setSpeed(Number(v))}><SelectTrigger className="h-8 w-[66px] text-xs"><SelectValue/></SelectTrigger><SelectContent>{[0.5,1,2,4].map(s=><SelectItem key={s} value={String(s)}>{s}x</SelectItem>)}</SelectContent></Select></div><Button size="sm" variant={chaos?'destructive':'outline'} className="h-8 text-xs" onClick={()=>setChaos(!chaos)}><Zap className="h-3.5 w-3.5 mr-1"/>Chaos</Button><Button size="sm" variant="outline" className="h-8 text-xs" onClick={addNode}><Plus className="h-3.5 w-3.5 mr-1"/>Node</Button><Button size="sm" variant="outline" className="h-8 text-xs" onClick={reset}><RotateCcw className="h-3.5 w-3.5 mr-1"/>Reset</Button><ThemeToggle/><button className="command-hint" onClick={()=>window.dispatchEvent(new Event('open-command-palette'))}><Command size={13}/> K</button></div></header>}
+function InspectorSheet(){const [open,setOpen]=useState(false),selected=useCluster(s=>s.selected);useEffect(()=>{setOpen(!window.matchMedia('(min-width: 1024px)').matches&&!!selected)},[selected]);useEffect(()=>{const mq=window.matchMedia('(min-width: 1024px)'),fn=()=>{if(mq.matches)setOpen(false)};mq.addEventListener('change',fn);return()=>mq.removeEventListener('change',fn)},[]);return <Sheet open={open} onOpenChange={setOpen}><SheetTrigger asChild><button aria-label="Inspect selected resource" className="lg:hidden fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-amber-600/50 bg-[var(--panel)] px-4 py-3 text-xs"><PencilLine size={16}/>Inspect / Edit{selected&&<span className="status-led"/>}</button></SheetTrigger><SheetContent side="right" className="w-80 p-0 overflow-y-auto custom-scroll"><SheetTitle className="sr-only">Inspector</SheetTitle><Inspector/></SheetContent></Sheet>}
+function TimelinePanel(){const events=useCluster(s=>s.events),tick=useCluster(s=>s.tickCount);return <div className="timeline-panel"><div className="timeline-track"><span className="timeline-now"/></div><div className="timeline-items">{events.slice(0,12).reverse().map(e=><div key={e.id} className="timeline-item"><span className={`timeline-dot ${e.type==='Warning'?'warning':''}`}/><span className="mono">{e.time}</span><b>{e.reason}</b><span>{e.message}</span></div>)}</div><div className="timeline-footer">CURRENT SIMULATION TICK <b>{tick}</b> · REWIND AVAILABLE IN SIMULATION CONTROLS</div></div>}
+function BottomDrawer(){const [tab,setTab]=useState<'events'|'console'|'timeline'>('events'),[expanded,setExpanded]=useState(true);const tick=useCluster(s=>s.tickCount);useEffect(()=>{const listener=(e:Event)=>{const name=(e as CustomEvent<string>).detail;if(name==='events'||name==='console'||name==='timeline'){setTab(name);setExpanded(true)}};window.addEventListener('open-drawer-tab',listener);return()=>window.removeEventListener('open-drawer-tab',listener)},[]);return <section className={`bottom-drawer ${expanded?'drawer-expanded':'drawer-collapsed'}`}><div className="drawer-header"><div className="flex items-center gap-1">{([{id:'events',label:'Events',icon:Activity},{id:'console',label:'Console',icon:Terminal},{id:'timeline',label:'Timeline',icon:Clock3}] as const).map(item=><button key={item.id} onClick={()=>{setTab(item.id);setExpanded(true)}} className={`drawer-tab ${tab===item.id?'active':''}`}><item.icon size={13}/>{item.label}</button>)}</div><div className="flex items-center gap-3"><span className="drawer-clock">SIM 00:{String(Math.floor(tick/60)).padStart(2,'0')}:{String(tick%60).padStart(2,'0')}</span><button className="drawer-collapse" onClick={()=>setExpanded(v=>!v)}>{expanded?'Minimize':'Expand'}<ChevronLeft className={expanded?'rotate-90':'-rotate-90'} size={13}/></button></div></div>{expanded&&<div className="drawer-content">{tab==='events'?<EventFeed/>:tab==='console'?<ConsolePanel/>:<TimelinePanel/>}</div>}</section>}
+export default function Home(){const [activeView,setActiveView]=useState<'workbench'|'lab'>('workbench'),[leftOpen,setLeftOpen]=useState(true),[rightOpen,setRightOpen]=useState(true);useEffect(()=>{const fn=(e:Event)=>setActiveView((e as CustomEvent<'workbench'|'lab'>).detail);window.addEventListener('switch-workspace',fn);return()=>window.removeEventListener('switch-workspace',fn)},[]);return <div className="control-room-shell"><Toolbar/><div className="workspace"><aside className={`explorer-pane ${leftOpen?'pane-open':'pane-closed'}`}><div className="pane-heading">{leftOpen&&<span>EXPLORER</span>}<button onClick={()=>setLeftOpen(v=>!v)} aria-label={leftOpen?'Collapse explorer':'Expand explorer'}>{leftOpen?<ChevronLeft size={15}/>:<PanelLeft size={15}/>}</button></div>{leftOpen?<Tabs defaultValue="create" className="flex min-h-0 flex-1 flex-col"><TabsList className="pane-tabs"><TabsTrigger value="create">Create</TabsTrigger><TabsTrigger value="resources">Resources</TabsTrigger></TabsList><TabsContent value="create" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><Palette/></ScrollArea></TabsContent><TabsContent value="resources" className="flex-1 min-h-0 mt-0"><ScrollArea className="h-full"><ResourceList/></ScrollArea></TabsContent></Tabs>:<div className="collapsed-glyph"><Boxes size={16}/></div>}</aside><main className="workbench-pane"><div className="view-tabs"><button onClick={()=>setActiveView('workbench')} aria-pressed={activeView==='workbench'} className={activeView==='workbench'?'selected':''}><LayoutDashboard size={14}/>Workbench</button><button onClick={()=>setActiveView('lab')} aria-pressed={activeView==='lab'} className={activeView==='lab'?'selected':''}><Activity size={14}/>Simulation Lab <span className="mission-count">50 MISSIONS</span></button></div>{activeView==='workbench'?<><div className="canvas-stage"><ReactFlowProvider><ClusterCanvas/></ReactFlowProvider><div className="scheduler-sweep"/></div><BottomDrawer/></>:<div className="lab-stage"><SimulationLab/></div>}</main><aside className={`inspector-pane ${rightOpen?'pane-open':'pane-closed'}`}><div className="pane-heading">{rightOpen&&<span>INSPECTOR</span>}<button onClick={()=>setRightOpen(v=>!v)} aria-label={rightOpen?'Collapse inspector':'Expand inspector'}>{rightOpen?<ChevronRight size={15}/>:<PanelRight size={15}/>}</button></div>{rightOpen?<div className="min-h-0 flex-1 overflow-y-auto custom-scroll"><Inspector/></div>:<div className="collapsed-glyph"><PanelRight size={16}/></div>}</aside></div><InspectorSheet/><EditDialog/><NodeInternalsDialog/><CommandPalette/><Toaster theme="dark"/></div>}
